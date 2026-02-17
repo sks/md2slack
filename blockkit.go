@@ -129,7 +129,7 @@ type RichTextStyle struct {
 	Italic bool `json:"italic,omitempty"`
 
 	// Strikethrough indicates strikethrough formatting.
-	Strikethrough bool `json:"strikethrough,omitempty"`
+	Strikethrough bool `json:"strike,omitempty"`
 
 	// Code indicates inline code formatting.
 	Code bool `json:"code,omitempty"`

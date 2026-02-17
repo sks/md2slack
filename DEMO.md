@@ -149,19 +149,27 @@ Use Claude Code to produce Markdown that exercises all the formatting features m
 
 ```bash
 claude -p \
-  'Write a short project overview in Markdown. Include:
-   an h1 title with bold text, h2 and h3 subheadings,
-   **bold**, _italic_, and ~~strikethrough~~ inline formatting,
-   `inline code` spans, a fenced code block with a language tag,
-   a [named link](url) and a standalone link on its own line,
-   an ![image](url) on its own line,
-   a bulleted list and a numbered list,
-   a > blockquote,
-   a Markdown table with a header row,
-   a --- horizontal rule between sections,
-   and reference-style links like [text][ref] with [ref]: url definitions at the bottom.' \
-  --output-format stream-json 2>/dev/null \
-  | jq -r 'select(.type == "result") | .result' \
+  'Print a detailed Markdown document (at least 80 lines) about a fictional
+   Go CLI tool called "taskrunner" that executes build pipelines. Use every
+   one of these Markdown features with real content:
+
+   - An h1 title, an h2 section heading, and an h3 sub-heading
+   - **bold**, _italic_, and ~~strikethrough~~ text inline within sentences
+   - `inline code` for function names, commands, and variables
+   - A fenced code block with a Go language tag containing a real code sample
+   - A fenced code block with a bash language tag showing CLI usage
+   - An inline [named link](https://example.com) within a paragraph
+   - A standalone link on its own line: [Link text](url)
+   - An image on its own line: ![alt text](https://via.placeholder.com/600x200)
+   - A bulleted list with at least 3 items
+   - A numbered list with at least 3 items
+   - A blockquote (> ) with at least two lines
+   - A Markdown table with a header row, separator, and at least 3 data rows
+   - A horizontal rule (---) separating two sections
+   - At least two reference-style links using [text][ref] syntax with
+     [ref]: url definitions at the bottom of the document
+
+   Output only raw Markdown.' \
   > /tmp/claude_output.md
 ```
 
