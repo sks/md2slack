@@ -9,8 +9,10 @@ import (
 
 // Package-level compiled regexps for inline element parsing.
 var (
-	reInlineBold      = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	reInlineBoldUnder = regexp.MustCompile(`__(.+?)__`)
+	reInlineBoldItalic      = regexp.MustCompile(`\*\*\*(.+?)\*\*\*`)
+	reInlineBoldItalicUnder = regexp.MustCompile(`___(.+?)___`)
+	reInlineBold            = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reInlineBoldUnder       = regexp.MustCompile(`__(.+?)__`)
 	reInlineItalic    = regexp.MustCompile(`(?:^|[\s(])_([^_]+?)_(?:$|[\s).,;:!?])`)
 	reInlineStrike    = regexp.MustCompile(`~~(.+?)~~`)
 	reInlineCode      = regexp.MustCompile("`([^`]+)`")
@@ -365,34 +367,63 @@ func ConvertToBlocks(markdown string) []Block {
 	type listItem struct {
 		indent  int
 		content string
+		style   string // "ordered" or "bullet"
 	}
 	var listBuf []listItem
-	var listStyle string // "ordered" or "bullet"
+	var listStyle string // style of the current top-level list
 
 	flushList := func() {
 		if len(listBuf) == 0 {
 			return
 		}
-		items := make([]RichTextSection, 0, len(listBuf))
-		for _, li := range listBuf {
-			items = append(items, RichTextSection{
-				Type:     "rich_text_section",
-				Elements: parseInlineElements(li.content),
-			})
+
+		// Group consecutive items by (indent level, style) into separate
+		// rich_text_list sections within a single rich_text block.
+		var richElements []RichTextSection
+
+		type group struct {
+			level int
+			style string
+			items []RichTextSection
+		}
+		var cur *group
+
+		flushGroup := func() {
+			if cur == nil {
+				return
+			}
+			sec := RichTextSection{
+				Type:  "rich_text_list",
+				Style: cur.style,
+				Items: cur.items,
+			}
+			if cur.level > 0 {
+				sec.Indent = cur.level
+			}
+			richElements = append(richElements, sec)
+			cur = nil
 		}
 
-		// Group by indent level. For now treat all as indent 0.
-		block := Block{
-			Type: "rich_text",
-			RichElements: []RichTextSection{
-				{
-					Type:  "rich_text_list",
-					Style: listStyle,
-					Items: items,
-				},
-			},
+		for _, li := range listBuf {
+			level := li.indent / 2
+			item := RichTextSection{
+				Type:     "rich_text_section",
+				Elements: parseInlineElements(li.content),
+			}
+			if cur != nil && (cur.level != level || cur.style != li.style) {
+				flushGroup()
+			}
+			if cur == nil {
+				cur = &group{level: level, style: li.style}
+			}
+			cur.items = append(cur.items, item)
 		}
-		blocks = append(blocks, block)
+		flushGroup()
+
+		blocks = append(blocks, Block{
+			Type:         "rich_text",
+			RichElements: richElements,
+		})
 		listBuf = nil
 		listStyle = ""
 	}
@@ -550,12 +581,15 @@ func ConvertToBlocks(markdown string) []Block {
 			textBuf = nil
 			indent := len(m[1])
 			content := m[2]
-			if listStyle == "bullet" {
-				// Different list type -- flush previous list.
+			level := indent / 2
+			// Only flush when style changes at top level (level 0).
+			if listStyle != "" && level == 0 && listStyle != "ordered" {
 				flushList()
 			}
-			listStyle = "ordered"
-			listBuf = append(listBuf, listItem{indent: indent, content: content})
+			if level == 0 {
+				listStyle = "ordered"
+			}
+			listBuf = append(listBuf, listItem{indent: indent, content: content, style: "ordered"})
 			continue
 		}
 
@@ -565,12 +599,15 @@ func ConvertToBlocks(markdown string) []Block {
 			textBuf = nil
 			indent := len(m[1])
 			content := m[2]
-			if listStyle == "ordered" {
-				// Different list type -- flush previous list.
+			level := indent / 2
+			// Only flush when style changes at top level (level 0).
+			if listStyle != "" && level == 0 && listStyle != "bullet" {
 				flushList()
 			}
-			listStyle = "bullet"
-			listBuf = append(listBuf, listItem{indent: indent, content: content})
+			if level == 0 {
+				listStyle = "bullet"
+			}
+			listBuf = append(listBuf, listItem{indent: indent, content: content, style: "bullet"})
 			continue
 		}
 
@@ -786,6 +823,38 @@ func parseInlineElements(text string) []RichTextElement {
 		})
 	}
 
+	// Bold+Italic: ***text***
+	for _, loc := range reInlineBoldItalic.FindAllStringSubmatchIndex(text, -1) {
+		spans = append(spans, span{
+			start: loc[0],
+			end:   loc[1],
+			elem: RichTextElement{
+				Type: "text",
+				Text: text[loc[2]:loc[3]],
+				Style: &RichTextStyle{
+					Bold:   true,
+					Italic: true,
+				},
+			},
+		})
+	}
+
+	// Bold+Italic underscores: ___text___
+	for _, loc := range reInlineBoldItalicUnder.FindAllStringSubmatchIndex(text, -1) {
+		spans = append(spans, span{
+			start: loc[0],
+			end:   loc[1],
+			elem: RichTextElement{
+				Type: "text",
+				Text: text[loc[2]:loc[3]],
+				Style: &RichTextStyle{
+					Bold:   true,
+					Italic: true,
+				},
+			},
+		})
+	}
+
 	// Bold: **text**
 	for _, loc := range reInlineBold.FindAllStringSubmatchIndex(text, -1) {
 		spans = append(spans, span{
@@ -910,9 +979,10 @@ type span struct {
 	elem       RichTextElement
 }
 
-// sortSpans sorts spans by start position.
+// sortSpans sorts spans by start position, preserving insertion order
+// (priority) for spans at the same position.
 func sortSpans(spans []span) {
-	slices.SortFunc(spans, func(a, b span) int {
+	slices.SortStableFunc(spans, func(a, b span) int {
 		return a.start - b.start
 	})
 }

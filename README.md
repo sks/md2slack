@@ -9,7 +9,7 @@
 - **Zero dependencies** — stdlib only
 - **Idempotent** — already-converted mrkdwn passes through unchanged
 - **Two output modes** — plain mrkdwn text or structured Block Kit blocks
-- **Rich Block Kit output** — headers, dividers, images, rich text lists, action buttons, context blocks, and tables
+- **Rich Block Kit output** — headers, dividers, images, rich text lists (with nested indent support), action buttons, context blocks, and tables
 - **Reference links** — resolves `[text][ref]` and `![alt][ref]` style links before processing
 - **Backtick links** — handles `` [`code`](url) `` without breaking on backtick splitting
 - **Safe** — escapes `&`, `<`, `>` and protects code spans from transformation
@@ -73,7 +73,7 @@ blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![ba
 | `---`, `***`, `___` | `divider` |
 | `![alt](url)` (standalone line) | `image` |
 | `[text](url)` (standalone line) | `actions` (button element) |
-| `1. item` / `- item` / `* item` | `rich_text` (`rich_text_list` with ordered/bullet style) |
+| `1. item` / `- item` / `* item` | `rich_text` (`rich_text_list` with ordered/bullet style, nested indent support) |
 | `> quote` | `context` (mrkdwn elements; images split out) |
 | Fenced code blocks (`` ``` `` / `~~~`) | `section` (mrkdwn with `` ``` `` delimiters) |
 | Tables (`\| H \| H \|` / `\|---\|---\|`) | `section` (mrkdwn with `` ``` `` delimiters, column-aligned) |
@@ -83,10 +83,10 @@ Inline images within text remain as mrkdwn links (`<url|alt>`) inside section bl
 
 ### Ordered and unordered lists
 
-Lists are emitted as `rich_text` blocks with proper list semantics, preserving ordered vs. unordered style:
+Lists are emitted as `rich_text` blocks with proper list semantics, preserving ordered vs. unordered style. Indented sub-lists are grouped at the correct indent level:
 
 ```go
-blocks := md2slack.ConvertToBlocks("1. First item\n2. Second item")
+blocks := md2slack.ConvertToBlocks("1. First item\n  - Sub-item A\n  - Sub-item B\n2. Second item")
 ```
 
 ```json
@@ -97,11 +97,32 @@ blocks := md2slack.ConvertToBlocks("1. First item\n2. Second item")
       {
         "type": "rich_text_list",
         "style": "ordered",
-        "items": [
+        "elements": [
           {
             "type": "rich_text_section",
             "elements": [{ "type": "text", "text": "First item" }]
+          }
+        ]
+      },
+      {
+        "type": "rich_text_list",
+        "style": "bullet",
+        "indent": 1,
+        "elements": [
+          {
+            "type": "rich_text_section",
+            "elements": [{ "type": "text", "text": "Sub-item A" }]
           },
+          {
+            "type": "rich_text_section",
+            "elements": [{ "type": "text", "text": "Sub-item B" }]
+          }
+        ]
+      },
+      {
+        "type": "rich_text_list",
+        "style": "ordered",
+        "elements": [
           {
             "type": "rich_text_section",
             "elements": [{ "type": "text", "text": "Second item" }]
@@ -113,7 +134,7 @@ blocks := md2slack.ConvertToBlocks("1. First item\n2. Second item")
 ]
 ```
 
-Inline formatting within list items is parsed into structured elements with style flags (`bold`, `italic`, `strikethrough`, `code`) rather than mrkdwn strings.
+Inline formatting within list items is parsed into structured elements with style flags (`bold`, `italic`, `strikethrough`, `code`) rather than mrkdwn strings. Mixed list types (e.g., ordered items with nested bullet sub-lists) are kept in a single `rich_text` block.
 
 ### Standalone links as buttons
 
@@ -183,6 +204,7 @@ In `ConvertToBlocks`, tables become `section` blocks with the same code-fenced c
 | Markdown | Slack mrkdwn | Notes |
 | :--- | :--- | :--- |
 | `**bold**` / `__bold__` | `*bold*` | |
+| `***bold italic***` / `___bold italic___` | `*_bold italic_*` | Combined bold and italic |
 | `~~strikethrough~~` | `~strikethrough~` | |
 | `[text](url)` | `<url\|text>` | Pipes escaped as `%7C`, nested parens supported |
 | `_italic_` | `_italic_` | Underscore italic passes through unchanged |

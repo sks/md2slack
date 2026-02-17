@@ -10,8 +10,10 @@ import (
 // Package-level compiled regexps for inline transforms.
 var (
 	reHeading           = regexp.MustCompile(`^#{1,6}\s+(.+)`)
-	reBoldAsterisks     = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	reBoldUnders        = regexp.MustCompile(`__(.+?)__`)
+	reBoldItalicAsterisks = regexp.MustCompile(`\*\*\*(.+?)\*\*\*`)
+	reBoldItalicUnders    = regexp.MustCompile(`___(.+?)___`)
+	reBoldAsterisks       = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reBoldUnders          = regexp.MustCompile(`__(.+?)__`)
 	reImageLink         = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
 	reLink              = regexp.MustCompile(`\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
 	reStrikethrough     = regexp.MustCompile(`~~(.+?)~~`)
@@ -310,6 +312,9 @@ func stripInlineMarkdown(cell string) string {
 	cell = reImageLink.ReplaceAllString(cell, "$1")
 	// Regular links: [text](url) → text
 	cell = reLink.ReplaceAllString(cell, "$1")
+	// Bold+Italic: ***text*** → text, ___text___ → text
+	cell = reBoldItalicAsterisks.ReplaceAllString(cell, "$1")
+	cell = reBoldItalicUnders.ReplaceAllString(cell, "$1")
 	// Bold: **text** → text
 	cell = reBoldAsterisks.ReplaceAllString(cell, "$1")
 	// Bold: __text__ → text
@@ -679,7 +684,12 @@ func applyInlineTransforms(seg, fullLine string) string {
 	//    Skip leading > for block quote lines.
 	seg = escapeSlackChars(seg, fullLine)
 
-	// 2. Bold — **text** → *text*, __text__ → *text*
+	// 2. Bold+Italic — ***text*** → *_text_*, ___text___ → *_text_*
+	//    Must run before bold to avoid consuming the outer ** first.
+	seg = replaceOutsideSlackLinks(seg, reBoldItalicAsterisks, convertBoldItalic)
+	seg = replaceOutsideSlackLinks(seg, reBoldItalicUnders, convertBoldItalic)
+
+	// 3. Bold — **text** → *text*, __text__ → *text*
 	//    Context-aware replacement to avoid creating new ** sequences at boundaries.
 	//    Operate only outside Slack links to avoid mangling URLs.
 	seg = replaceWithContextOutsideSlackLinks(seg, reBoldAsterisks, "*", "*")
@@ -781,6 +791,25 @@ func replaceWithContext(s string, re *regexp.Regexp, wrap, skip string) string {
 	}
 	b.WriteString(s[prev:])
 	return b.String()
+}
+
+// convertBoldItalic transforms ***text*** or ___text___ into Slack *_text_*.
+// Skips if content starts/ends with * or _ to avoid ambiguity.
+func convertBoldItalic(match string) string {
+	// Try asterisks first, then underscores.
+	m := reBoldItalicAsterisks.FindStringSubmatch(match)
+	if m == nil {
+		m = reBoldItalicUnders.FindStringSubmatch(match)
+	}
+	if m == nil {
+		return match
+	}
+	content := m[1]
+	if strings.HasPrefix(content, "*") || strings.HasSuffix(content, "*") ||
+		strings.HasPrefix(content, "_") || strings.HasSuffix(content, "_") {
+		return match
+	}
+	return "*_" + content + "_*"
 }
 
 // convertImageLink transforms a markdown image match into Slack link format.

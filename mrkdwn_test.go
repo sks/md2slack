@@ -286,6 +286,33 @@ func TestConvert(t *testing.T) {
 			expected: "- *Important* item",
 		},
 
+		// Bold+Italic.
+		{
+			name:     "bold italic asterisks",
+			input:    "This is ***bold italic*** text",
+			expected: "This is *_bold italic_* text",
+		},
+		{
+			name:     "bold italic underscores",
+			input:    "This is ___bold italic___ text",
+			expected: "This is *_bold italic_* text",
+		},
+		{
+			name:     "bold italic with regular bold",
+			input:    "***both*** and **just bold**",
+			expected: "*_both_* and *just bold*",
+		},
+		{
+			name:     "bold italic in heading",
+			input:    "## ***Important*** Title",
+			expected: "*Important Title*",
+		},
+		{
+			name:     "bold italic in inline code preserved",
+			input:    "Use `***not bold italic***` in code",
+			expected: "Use `***not bold italic***` in code",
+		},
+
 		// Reference-style links.
 		{
 			name:     "reference link resolved",
@@ -523,6 +550,7 @@ func TestConvert_Idempotent(t *testing.T) {
 		"<https://example.com>",
 		"> block quote with &amp; entity",
 		"```\nA | B\n- | -\n1 | 2\n```",
+		"*_bold italic_*",
 	}
 
 	for _, input := range inputs {
@@ -556,6 +584,8 @@ func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
 		"**`test.sh`** script",
 		"The *`test.sh`* script",
 		"| A | B |\n|---|---|\n| 1 | 2 |",
+		"***bold italic*** text",
+		"___bold italic___ text",
 	}
 
 	for _, md := range markdownInputs {

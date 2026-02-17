@@ -584,6 +584,173 @@ func TestConvertToBlocks(t *testing.T) {
 			},
 		},
 
+		// Nested lists.
+		{
+			name:  "nested unordered list",
+			input: "- Parent one\n  - Child A\n  - Child B\n- Parent two",
+			want: []Block{
+				{
+					Type: "rich_text",
+					RichElements: []RichTextSection{
+						{
+							Type:  "rich_text_list",
+							Style: "bullet",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Parent one"}}},
+							},
+						},
+						{
+							Type:   "rich_text_list",
+							Style:  "bullet",
+							Indent: 1,
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Child A"}}},
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Child B"}}},
+							},
+						},
+						{
+							Type:  "rich_text_list",
+							Style: "bullet",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Parent two"}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "ordered list with nested bullet sub-list",
+			input: "1. First\n  - Sub A\n  - Sub B\n2. Second",
+			want: []Block{
+				{
+					Type: "rich_text",
+					RichElements: []RichTextSection{
+						{
+							Type:  "rich_text_list",
+							Style: "ordered",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "First"}}},
+							},
+						},
+						{
+							Type:   "rich_text_list",
+							Style:  "bullet",
+							Indent: 1,
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Sub A"}}},
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Sub B"}}},
+							},
+						},
+						{
+							Type:  "rich_text_list",
+							Style: "ordered",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Second"}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "deeply nested list three levels",
+			input: "- Level 0\n  - Level 1\n    - Level 2",
+			want: []Block{
+				{
+					Type: "rich_text",
+					RichElements: []RichTextSection{
+						{
+							Type:  "rich_text_list",
+							Style: "bullet",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Level 0"}}},
+							},
+						},
+						{
+							Type:   "rich_text_list",
+							Style:  "bullet",
+							Indent: 1,
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Level 1"}}},
+							},
+						},
+						{
+							Type:   "rich_text_list",
+							Style:  "bullet",
+							Indent: 2,
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Level 2"}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "single item sub-list",
+			input: "1. Main\n  - Only child\n2. Next",
+			want: []Block{
+				{
+					Type: "rich_text",
+					RichElements: []RichTextSection{
+						{
+							Type:  "rich_text_list",
+							Style: "ordered",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Main"}}},
+							},
+						},
+						{
+							Type:   "rich_text_list",
+							Style:  "bullet",
+							Indent: 1,
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Only child"}}},
+							},
+						},
+						{
+							Type:  "rich_text_list",
+							Style: "ordered",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{{Type: "text", Text: "Next"}}},
+							},
+						},
+					},
+				},
+			},
+		},
+
+		// Bold+italic in blocks.
+		{
+			name:  "bold italic in list item",
+			input: "- ***Important*** item",
+			want: []Block{
+				{
+					Type: "rich_text",
+					RichElements: []RichTextSection{
+						{
+							Type:  "rich_text_list",
+							Style: "bullet",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{
+									{Type: "text", Text: "Important", Style: &RichTextStyle{Bold: true, Italic: true}},
+									{Type: "text", Text: " item"},
+								}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "bold italic in text becomes section with mrkdwn",
+			input: "This is ***bold italic*** text",
+			want: []Block{
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "This is *_bold italic_* text"}},
+			},
+		},
+
 		// Links with backticks in text.
 		{
 			name:  "list item with backtick link",
@@ -713,6 +880,29 @@ func TestParseInlineElements(t *testing.T) {
 			input: "![`alt`](https://img.com/pic.png)",
 			want: []RichTextElement{
 				{Type: "link", URL: "https://img.com/pic.png", Text: "alt"},
+			},
+		},
+		{
+			name:  "bold italic asterisks",
+			input: "Hello ***world***",
+			want: []RichTextElement{
+				{Type: "text", Text: "Hello "},
+				{Type: "text", Text: "world", Style: &RichTextStyle{Bold: true, Italic: true}},
+			},
+		},
+		{
+			name:  "bold italic underscores",
+			input: "Hello ___world___",
+			want: []RichTextElement{
+				{Type: "text", Text: "Hello "},
+				{Type: "text", Text: "world", Style: &RichTextStyle{Bold: true, Italic: true}},
+			},
+		},
+		{
+			name:  "bold italic takes priority over bold",
+			input: "***text***",
+			want: []RichTextElement{
+				{Type: "text", Text: "text", Style: &RichTextStyle{Bold: true, Italic: true}},
 			},
 		},
 	}
