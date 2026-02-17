@@ -174,10 +174,44 @@ claude -p "Summarize the latest changes in this repo." \
 
 ## Tip: threading replies
 
-To post both messages in the same Slack thread, capture the `"ts"` field from the first response and pass it as `"thread_ts"` in the second payload:
+By default the demo posts two separate messages. To make the Block Kit message appear as a reply to the mrkdwn message, you need to:
+
+1. Parse the `"ts"` timestamp from the first Slack response.
+2. Include that value as `"thread_ts"` in the second request.
+
+Replace the two posting calls in `main()` with:
 
 ```go
-var result struct{ TS string `json:"ts"` }
-json.Unmarshal([]byte(resp), &result)
-// add "thread_ts": result.TS to the second payload
+	// Post as mrkdwn text (simple formatting).
+	mrkdwn := md2slack.Convert(md)
+	textResp := postText(token, channel, mrkdwn)
+
+	// Extract the message timestamp from Slack's response.
+	var slackResp struct {
+		OK bool   `json:"ok"`
+		TS string `json:"ts"`
+	}
+	json.Unmarshal([]byte(textResp), &slackResp)
+
+	// Post Block Kit blocks as a threaded reply.
+	blocks := md2slack.ConvertToBlocks(md)
+	postBlocksThreaded(token, channel, slackResp.TS, blocks)
 ```
+
+And add this helper alongside the existing `postBlocks` function:
+
+```go
+func postBlocksThreaded(token, channel, threadTS string, blocks []md2slack.Block) {
+	blocksJSON, _ := json.Marshal(blocks)
+	payload, _ := json.Marshal(map[string]json.RawMessage{
+		"channel":   json.RawMessage(`"` + channel + `"`),
+		"text":      json.RawMessage(`"fallback text"`),
+		"thread_ts": json.RawMessage(`"` + threadTS + `"`),
+		"blocks":    blocksJSON,
+	})
+	resp := slackPost(token, payload)
+	fmt.Println("threaded blocks response:", resp)
+}
+```
+
+You will also need to change `postText` to return the response string (`func postText(...) string`) so the timestamp can be captured.
