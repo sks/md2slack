@@ -191,6 +191,10 @@ blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/ico
 
 All types serialize to JSON matching the [Slack Block Kit specification][Block Kit].
 
+## Demo
+
+See [DEMO.md](DEMO.md) for a standalone script that posts converted Markdown to a Slack channel using both `Convert` and `ConvertToBlocks`.
+
 ## Contributing
 
 Fork the repository and open a pull request. Contributions are welcome!
