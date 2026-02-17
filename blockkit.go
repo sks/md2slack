@@ -149,7 +149,7 @@ type ActionElement struct {
 // types differ. This method serializes the appropriate Go field (Elements,
 // RichElements, or ActionElements) under the unified "elements" key based on
 // the block's Type.
-func (b Block) MarshalJSON() ([]byte, error) {
+func (b Block) MarshalJSON() ([]byte, error) { //nolint:gocritic // value receiver required so json.Marshal works on []Block elements
 	// blockAlias prevents infinite recursion by hiding the MarshalJSON method.
 	type blockAlias Block
 
@@ -177,8 +177,8 @@ func (b Block) MarshalJSON() ([]byte, error) {
 			blockAlias
 			Elements []RichTextSection `json:"elements"`
 		}{
-			blockAlias:  blockAlias(b),
-			Elements: b.RichElements,
+			blockAlias: blockAlias(b),
+			Elements:   b.RichElements,
 		})
 	case "actions":
 		if len(b.ActionElements) == 0 {
@@ -190,8 +190,8 @@ func (b Block) MarshalJSON() ([]byte, error) {
 			blockAlias
 			Elements []ActionElement `json:"elements"`
 		}{
-			blockAlias:  blockAlias(b),
-			Elements: b.ActionElements,
+			blockAlias: blockAlias(b),
+			Elements:   b.ActionElements,
 		})
 	default:
 		return json.Marshal(struct {
