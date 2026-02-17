@@ -1,6 +1,6 @@
 # Demo: posting to Slack
 
-This guide walks you through building a small Go program that converts Markdown to Slack format using md2slack, then posts the result to a Slack channel.
+This guide walks you through building a small Go program that converts Markdown to Slack Block Kit blocks using md2slack, then posts the result to a Slack channel.
 
 ## Prerequisites
 
@@ -20,17 +20,18 @@ mkdir slack-demo && cd slack-demo
 go mod init slack-demo
 ```
 
-Then add md2slack as a dependency:
+Then add md2slack and slack-go as dependencies:
 
 ```bash
 go get github.com/navidemad/md2slack
+go get github.com/slack-go/slack
 ```
 
 This creates `go.mod` and `go.sum` files that Go uses to track dependencies.
 
 ## Step 2 — Write the demo program
 
-Create `main.go` with the following content. It reads Markdown from a file (or uses a built-in sample) and posts it to Slack in two formats:
+Create `main.go` with the following content. It reads Markdown from a file (or uses a built-in sample), converts it to Slack Block Kit blocks, and posts them to a channel:
 
 ```go
 package main
@@ -44,6 +45,7 @@ import (
 	"os"
 
 	"github.com/navidemad/md2slack"
+	"github.com/slack-go/slack"
 )
 
 func main() {
@@ -66,13 +68,22 @@ func main() {
 		md = string(data)
 	}
 
-	// Post as mrkdwn text (simple formatting).
-	mrkdwn := md2slack.Convert(md)
-	postText(token, channel, mrkdwn)
+	// Convert Markdown to Slack Block Kit blocks.
+	blocks, err := md2slack.Convert(md)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "convert error: %v\n", err)
+		os.Exit(1)
+	}
 
-	// Post as Block Kit blocks (rich layout).
-	blocks := md2slack.ConvertToBlocks(md)
-	postBlocks(token, channel, blocks)
+	// Split into chunks of 50 blocks (Slack's per-message limit).
+	chunks := md2slack.ChunkBlocks(blocks, 50)
+
+	for i, chunk := range chunks {
+		if len(chunks) > 1 {
+			fmt.Fprintf(os.Stderr, "Posting message %d/%d...\n", i+1, len(chunks))
+		}
+		postBlocks(token, channel, chunk)
+	}
 }
 
 const sampleMarkdown = `# Hello from md2slack
@@ -90,24 +101,15 @@ This is **bold**, _italic_, and ~~strikethrough~~.
 ![gopher](https://go.dev/blog/gopher/header.jpg)
 `
 
-func postText(token, channel, text string) {
-	payload, _ := json.Marshal(map[string]string{
-		"channel": channel,
-		"text":    text,
-	})
-	resp := slackPost(token, payload)
-	fmt.Println("text response:", resp)
-}
-
-func postBlocks(token, channel string, blocks []md2slack.Block) {
+func postBlocks(token, channel string, blocks []slack.Block) {
 	blocksJSON, _ := json.Marshal(blocks)
 	payload, _ := json.Marshal(map[string]json.RawMessage{
 		"channel": json.RawMessage(`"` + channel + `"`),
-		"text":    json.RawMessage(`"fallback text"`),
+		"text":    json.RawMessage(`"Markdown message"`),
 		"blocks":  blocksJSON,
 	})
 	resp := slackPost(token, payload)
-	fmt.Println("blocks response:", resp)
+	fmt.Println("response:", resp)
 }
 
 func slackPost(token string, payload []byte) string {
@@ -135,7 +137,7 @@ export SLACK_CHANNEL="C0123456789"
 go run main.go
 ```
 
-This posts two messages to your channel — one using `Convert` (plain mrkdwn) and one using `ConvertToBlocks` (Block Kit blocks). Compare how Slack renders each format.
+This converts the sample Markdown to Block Kit blocks and posts them to your channel. If the output exceeds 50 blocks, it automatically splits across multiple messages using `ChunkBlocks`.
 
 To use a Markdown file instead of the built-in sample:
 
@@ -190,44 +192,48 @@ claude -p "Summarize the latest changes in this repo." \
 
 ## Tip: threading replies
 
-By default the demo posts two separate messages. To make the Block Kit message appear as a reply to the mrkdwn message, you need to:
+To post multiple chunk messages as a thread (so only the first appears in the channel), capture the `"ts"` timestamp from the first response and pass it as `"thread_ts"` in subsequent requests.
 
-1. Parse the `"ts"` timestamp from the first Slack response.
-2. Include that value as `"thread_ts"` in the second request.
-
-Replace the two posting calls in `main()` with:
+Replace the posting loop in `main()` with:
 
 ```go
-	// Post as mrkdwn text (simple formatting).
-	mrkdwn := md2slack.Convert(md)
-	textResp := postText(token, channel, mrkdwn)
+	var threadTS string
+	for i, chunk := range chunks {
+		if len(chunks) > 1 {
+			fmt.Fprintf(os.Stderr, "Posting message %d/%d...\n", i+1, len(chunks))
+		}
+		resp := postBlocks(token, channel, threadTS, chunk)
 
-	// Extract the message timestamp from Slack's response.
-	var slackResp struct {
-		OK bool   `json:"ok"`
-		TS string `json:"ts"`
+		// After the first message, thread the rest as replies.
+		if threadTS == "" {
+			var slackResp struct {
+				OK bool   `json:"ok"`
+				TS string `json:"ts"`
+			}
+			json.Unmarshal([]byte(resp), &slackResp)
+			if slackResp.OK {
+				threadTS = slackResp.TS
+			}
+		}
 	}
-	json.Unmarshal([]byte(textResp), &slackResp)
-
-	// Post Block Kit blocks as a threaded reply.
-	blocks := md2slack.ConvertToBlocks(md)
-	postBlocksThreaded(token, channel, slackResp.TS, blocks)
 ```
 
-And add this helper alongside the existing `postBlocks` function:
+And update `postBlocks` to accept and use the thread timestamp:
 
 ```go
-func postBlocksThreaded(token, channel, threadTS string, blocks []md2slack.Block) {
+func postBlocks(token, channel, threadTS string, blocks []slack.Block) string {
 	blocksJSON, _ := json.Marshal(blocks)
-	payload, _ := json.Marshal(map[string]json.RawMessage{
-		"channel":   json.RawMessage(`"` + channel + `"`),
-		"text":      json.RawMessage(`"fallback text"`),
-		"thread_ts": json.RawMessage(`"` + threadTS + `"`),
-		"blocks":    blocksJSON,
-	})
-	resp := slackPost(token, payload)
-	fmt.Println("threaded blocks response:", resp)
+	payload := map[string]json.RawMessage{
+		"channel": json.RawMessage(`"` + channel + `"`),
+		"text":    json.RawMessage(`"Markdown message"`),
+		"blocks":  blocksJSON,
+	}
+	if threadTS != "" {
+		payload["thread_ts"] = json.RawMessage(`"` + threadTS + `"`)
+	}
+	payloadJSON, _ := json.Marshal(payload)
+	resp := slackPost(token, payloadJSON)
+	fmt.Println("response:", resp)
+	return resp
 }
 ```
-
-You will also need to change `postText` to return the response string (`func postText(...) string`) so the timestamp can be captured.
