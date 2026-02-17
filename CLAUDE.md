@@ -16,8 +16,8 @@ md2slack is a Go library that converts standard Markdown into Slack-compatible f
 
 Single flat package `md2slack` — no subpackages.
 
-- `mrkdwn.go` — Core `Convert()` function plus all unexported helpers. Processes input line-by-line: code fences toggle pass-through mode, all other lines go through `processInlineLine` which splits by backtick pairs (protecting inline code) then applies `applyInlineTransforms` (escaping, headings, bold, links, strikethrough, numbered lists in that order).
-- `blockkit.go` — `ConvertToBlocks()` wraps `Convert()` output in a single section block (stub for future richer block structures). Defines `Block` and `TextObject` types.
+- `mrkdwn.go` — Core `Convert()` function plus all unexported helpers. Processes input line-by-line: code fences toggle pass-through mode, all other lines go through `processInlineLine` which splits by backtick pairs (protecting inline code) then applies `applyInlineTransforms` (escaping, headings, bold, links, strikethrough, numbered lists in that order). Also defines regex patterns used by both `Convert` and `ConvertToBlocks` (`reStandaloneLink`, `reOrderedListItem`, `reUnorderedListItem`).
+- `blockkit.go` — `ConvertToBlocks()` scans input line-by-line and emits semantically appropriate Block Kit blocks: `header`, `divider`, `image`, `section` (mrkdwn), `rich_text` (lists with structured inline elements), `actions` (standalone link buttons), and `context` (blockquotes with optional image splitting). Defines types: `Block`, `TextObject`, `RichTextSection`, `RichTextElement`, `RichTextStyle`, `ActionElement`. Custom `MarshalJSON`/`UnmarshalJSON` on `Block` ensures all element arrays serialize under the `"elements"` JSON key as the Slack API expects. Also contains `parseInlineElements()` which parses markdown text into structured rich text elements with priority-based span resolution (code > links > bold > italic > strikethrough).
 - `doc.go` — Package-level godoc.
 - `example_test.go` — Runnable godoc examples (external test package `md2slack_test`). The `Example*` functions appear as code samples on pkg.go.dev, and `// Output:` comments make them double as regression tests — `go test` verifies the output stays correct.
 
@@ -25,6 +25,7 @@ Single flat package `md2slack` — no subpackages.
 
 - Package stays flat — no subpackages unless API surface grows significantly
 - Exported names rely on package qualifier: `md2slack.Convert`, not `md2slack.ConvertMarkdownToSlack`
-- All regex patterns are compiled once at package level (`var` block in `mrkdwn.go`)
+- All regex patterns are compiled once at package level (`var` blocks in `mrkdwn.go` and `blockkit.go`)
 - Tests use table-driven style with descriptive sub-test names
 - `Convert` must be idempotent — already-converted mrkdwn passes through unchanged (verified by `TestConvert_Idempotent`)
+- JSON output from `Block` must match Slack API field names — context, rich_text, and actions blocks all use `"elements"` as the JSON key (handled by custom marshal/unmarshal methods)

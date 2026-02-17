@@ -98,3 +98,91 @@ func ExampleConvertToBlocks_richBlocks() {
 	//   }
 	// ]
 }
+
+func ExampleConvertToBlocks_orderedList() {
+	blocks := md2slack.ConvertToBlocks("1. First item\n2. Second item")
+	out, _ := json.MarshalIndent(blocks, "", "  ")
+	fmt.Println(string(out))
+	// Output:
+	// [
+	//   {
+	//     "type": "rich_text",
+	//     "elements": [
+	//       {
+	//         "type": "rich_text_list",
+	//         "style": "ordered",
+	//         "items": [
+	//           {
+	//             "type": "rich_text_section",
+	//             "elements": [
+	//               {
+	//                 "type": "text",
+	//                 "text": "First item"
+	//               }
+	//             ]
+	//           },
+	//           {
+	//             "type": "rich_text_section",
+	//             "elements": [
+	//               {
+	//                 "type": "text",
+	//                 "text": "Second item"
+	//               }
+	//             ]
+	//           }
+	//         ]
+	//       }
+	//     ]
+	//   }
+	// ]
+}
+
+func ExampleConvertToBlocks_standaloneLink() {
+	blocks := md2slack.ConvertToBlocks("[Click here](https://example.com)")
+	out, _ := json.MarshalIndent(blocks, "", "  ")
+	fmt.Println(string(out))
+	// Output:
+	// [
+	//   {
+	//     "type": "actions",
+	//     "elements": [
+	//       {
+	//         "type": "button",
+	//         "text": {
+	//           "type": "plain_text",
+	//           "text": "Click here"
+	//         },
+	//         "url": "https://example.com"
+	//       }
+	//     ]
+	//   }
+	// ]
+}
+
+func ExampleConvertToBlocks_contextWithImage() {
+	blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/icon.png) out")
+	out, _ := json.MarshalIndent(blocks, "", "  ")
+	fmt.Println(string(out))
+	// Output:
+	// [
+	//   {
+	//     "type": "context",
+	//     "elements": [
+	//       {
+	//         "type": "mrkdwn",
+	//         "text": "Check this"
+	//       },
+	//       {
+	//         "type": "image",
+	//         "text": "",
+	//         "image_url": "https://example.com/icon.png",
+	//         "alt_text": "icon"
+	//       },
+	//       {
+	//         "type": "mrkdwn",
+	//         "text": "out"
+	//       }
+	//     ]
+	//   }
+	// ]
+}

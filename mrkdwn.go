@@ -21,6 +21,9 @@ var (
 	reConsecUnders    = regexp.MustCompile(`_{2,}`)
 	reHorizontalRule  = regexp.MustCompile(`^\s*(?:-[\s]*-[\s]*-[-\s]*|_[\s]*_[\s]*_[_\s]*|\*[\s]*\*[\s]*\*[*\s]*)$`)
 	reStandaloneImage = regexp.MustCompile(`^\s*!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)\s*$`)
+	reStandaloneLink    = regexp.MustCompile(`^\s*\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)\s*$`)
+	reOrderedListItem   = regexp.MustCompile(`^(\s*)\d+[.)]\s+(.*)`)
+	reUnorderedListItem = regexp.MustCompile(`^(\s*)[-*+]\s+(.*)`)
 )
 
 // Convert transforms standard Markdown into Slack's mrkdwn text format.
