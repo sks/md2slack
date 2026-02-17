@@ -411,6 +411,28 @@ func TestConvert(t *testing.T) {
 			input:    "See [`github.com/org/repo`](https://github.com/org/repo) for details",
 			expected: "See <https://github.com/org/repo|github.com/org/repo> for details",
 		},
+
+		// Bold wrapping inline code.
+		{
+			name:     "bold wrapping backtick code asterisks",
+			input:    "The **`test.sh`** script runs tests",
+			expected: "The *`test.sh`* script runs tests",
+		},
+		{
+			name:     "bold wrapping backtick code underscores",
+			input:    "The __`test.sh`__ script runs tests",
+			expected: "The *`test.sh`* script runs tests",
+		},
+		{
+			name:     "multiple bold-wrapped code spans",
+			input:    "Use **`foo`** and **`bar`** functions",
+			expected: "Use *`foo`* and *`bar`* functions",
+		},
+		{
+			name:     "bold-wrapped code at start of line",
+			input:    "**`main.go`** is the entry point",
+			expected: "*`main.go`* is the entry point",
+		},
 	}
 
 	for _, tt := range tests {
@@ -531,6 +553,8 @@ func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
 		"```\ncode & <stuff>\n```",
 		"> block quote with & and **bold**",
 		"[`code`](https://example.com)",
+		"**`test.sh`** script",
+		"The *`test.sh`* script",
 		"| A | B |\n|---|---|\n| 1 | 2 |",
 	}
 

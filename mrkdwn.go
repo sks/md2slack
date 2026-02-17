@@ -45,6 +45,13 @@ var reBacktickImageLink = regexp.MustCompile("!" + `\[([^\]]*` + "`" + `[^\]]*)\
 // reBacktickLink matches links whose text contains backticks: [`text`](url)
 var reBacktickLink = regexp.MustCompile(`\[([^\]]*` + "`" + `[^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
 
+// reBoldBacktick matches bold markers wrapping backtick code: **`code`** or __`code`__
+var reBoldBacktick = regexp.MustCompile("(?:\\*\\*|__)`([^`]+)`(?:\\*\\*|__)")
+
+// reSlackBoldBacktick matches the already-converted Slack form: *`code`*
+// Used to protect it from backtick-splitting during idempotent re-processing.
+var reSlackBoldBacktick = regexp.MustCompile("\\*`([^`]+)`\\*")
+
 // linkPlaceholder holds a pre-extracted link that has been replaced with a
 // placeholder string to protect it from backtick-splitting in processInlineLine.
 type linkPlaceholder struct {
@@ -57,9 +64,41 @@ type linkPlaceholder struct {
 // NUL-delimited placeholder so that backtick-splitting in processInlineLine
 // does not fragment the link. Links without backticks in their text are left
 // for normal processing.
+//
+// It also handles bold markers wrapping backtick code (**`code`** or __`code`__)
+// by replacing them with *`code`* before backtick-splitting.
 func preExtractLinks(line string) (string, []linkPlaceholder) {
 	var phs []linkPlaceholder
 	n := 0
+
+	// Bold wrapping backtick code: **`code`** or __`code`__ → *`code`*
+	// Replaced with a placeholder to prevent backtick-splitting from
+	// fragmenting the bold+code span across segments.
+	line = reBoldBacktick.ReplaceAllStringFunc(line, func(match string) string {
+		m := reBoldBacktick.FindStringSubmatch(match)
+		if m == nil {
+			return match
+		}
+		sl := "*`" + m[1] + "`*"
+		ph := "\x00L" + strconv.Itoa(n) + "\x00"
+		n++
+		phs = append(phs, linkPlaceholder{placeholder: ph, slackLink: sl})
+		return ph
+	})
+
+	// Already-converted Slack bold+code: *`code`* — protect from backtick-
+	// splitting for idempotency. The placeholder restores to the same string.
+	line = reSlackBoldBacktick.ReplaceAllStringFunc(line, func(match string) string {
+		m := reSlackBoldBacktick.FindStringSubmatch(match)
+		if m == nil {
+			return match
+		}
+		sl := "*`" + m[1] + "`*"
+		ph := "\x00L" + strconv.Itoa(n) + "\x00"
+		n++
+		phs = append(phs, linkPlaceholder{placeholder: ph, slackLink: sl})
+		return ph
+	})
 
 	// Image links first (to avoid leaving a stray "!").
 	line = reBacktickImageLink.ReplaceAllStringFunc(line, func(match string) string {
