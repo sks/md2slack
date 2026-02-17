@@ -145,13 +145,21 @@ go run main.go /path/to/your/file.md
 
 ## Optional: generate Markdown with Claude Code
 
-Use Claude Code to produce Markdown that exercises headings, bold, code blocks, lists, and links:
+Use Claude Code to produce Markdown that exercises all the formatting features md2slack supports — headings, bold, italic, strikethrough, inline code, code blocks, links, images, ordered and unordered lists, blockquotes, tables, horizontal rules, and reference-style links:
 
 ```bash
 claude -p \
-  "Explain the architecture of this project briefly. \
-   Use markdown headings, bold, code examples with language tags, \
-   and link references." \
+  'Write a short project overview in Markdown. Include:
+   an h1 title with bold text, h2 and h3 subheadings,
+   **bold**, _italic_, and ~~strikethrough~~ inline formatting,
+   `inline code` spans, a fenced code block with a language tag,
+   a [named link](url) and a standalone link on its own line,
+   an ![image](url) on its own line,
+   a bulleted list and a numbered list,
+   a > blockquote,
+   a Markdown table with a header row,
+   a --- horizontal rule between sections,
+   and reference-style links like [text][ref] with [ref]: url definitions at the bottom.' \
   --output-format stream-json 2>/dev/null \
   | jq -r 'select(.type == "result") | .result' \
   > /tmp/claude_output.md
