@@ -2,6 +2,7 @@ package md2slack
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -30,6 +31,81 @@ var (
 	reRefLink  = regexp.MustCompile(`\[([^\]]+)\]\[([^\]]*)\]`)
 	reRefImage = regexp.MustCompile(`!\[([^\]]*)\]\[([^\]]*)\]`)
 )
+
+// reBacktickImageLink matches image links whose alt text contains backticks: ![`alt`](url)
+var reBacktickImageLink = regexp.MustCompile("!" + `\[([^\]]*` + "`" + `[^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
+
+// reBacktickLink matches links whose text contains backticks: [`text`](url)
+var reBacktickLink = regexp.MustCompile(`\[([^\]]*` + "`" + `[^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
+
+// linkPlaceholder holds a pre-extracted link that has been replaced with a
+// placeholder string to protect it from backtick-splitting in processInlineLine.
+type linkPlaceholder struct {
+	placeholder string
+	slackLink   string
+}
+
+// preExtractLinks scans the line for ![alt](url) and [text](url) patterns
+// where the alt/text contains backticks. Each such match is replaced with a
+// NUL-delimited placeholder so that backtick-splitting in processInlineLine
+// does not fragment the link. Links without backticks in their text are left
+// for normal processing.
+func preExtractLinks(line string) (string, []linkPlaceholder) {
+	var phs []linkPlaceholder
+	n := 0
+
+	// Image links first (to avoid leaving a stray "!").
+	line = reBacktickImageLink.ReplaceAllStringFunc(line, func(match string) string {
+		m := reBacktickImageLink.FindStringSubmatch(match)
+		if m == nil {
+			return match
+		}
+		alt := strings.ReplaceAll(m[1], "`", "")
+		url := strings.ReplaceAll(m[2], "|", "%7C")
+		if url == "" {
+			return match
+		}
+		var sl string
+		if alt == "" {
+			sl = "<" + url + ">"
+		} else {
+			sl = "<" + url + "|" + alt + ">"
+		}
+		ph := "\x00L" + strconv.Itoa(n) + "\x00"
+		n++
+		phs = append(phs, linkPlaceholder{placeholder: ph, slackLink: sl})
+		return ph
+	})
+
+	// Regular links.
+	line = reBacktickLink.ReplaceAllStringFunc(line, func(match string) string {
+		m := reBacktickLink.FindStringSubmatch(match)
+		if m == nil {
+			return match
+		}
+		text := strings.ReplaceAll(m[1], "`", "")
+		url := strings.ReplaceAll(m[2], "|", "%7C")
+		if url == "" {
+			return match
+		}
+		sl := "<" + url + "|" + text + ">"
+		ph := "\x00L" + strconv.Itoa(n) + "\x00"
+		n++
+		phs = append(phs, linkPlaceholder{placeholder: ph, slackLink: sl})
+		return ph
+	})
+
+	return line, phs
+}
+
+// restoreLinkPlaceholders replaces placeholders inserted by preExtractLinks
+// with their corresponding Slack-format links.
+func restoreLinkPlaceholders(line string, phs []linkPlaceholder) string {
+	for _, ph := range phs {
+		line = strings.ReplaceAll(line, ph.placeholder, ph.slackLink)
+	}
+	return line
+}
 
 // resolveReferences converts reference-style links and images into inline form.
 // It scans for [ref]: url definitions (outside code fences), collects them into
@@ -223,14 +299,18 @@ func Convert(input string) string {
 // remaining non-code segments are transformed for links/strikethrough/escaping,
 // and the result is wrapped in *...*.
 func processInlineLine(line string) string {
+	// Pre-extract links whose text contains backticks so that backtick-
+	// splitting below does not fragment them across segments.
+	line, phs := preExtractLinks(line)
+
 	// Headings are line-level — detect on the escaped full line.
 	escaped := escapeSlackChars(line, line)
 	if m := reHeading.FindStringSubmatch(escaped); len(m) > 1 && strings.TrimSpace(m[1]) != "" {
-		return processHeadingLine(m[1], line)
+		return restoreLinkPlaceholders(processHeadingLine(m[1], line), phs)
 	}
 
 	if strings.Count(line, "`") < 2 {
-		return applyInlineTransforms(line, line)
+		return restoreLinkPlaceholders(applyInlineTransforms(line, line), phs)
 	}
 
 	segments := strings.Split(line, "`")
@@ -239,7 +319,7 @@ func processInlineLine(line string) string {
 			segments[i] = applyInlineTransforms(segments[i], line)
 		}
 	}
-	return strings.Join(segments, "`")
+	return restoreLinkPlaceholders(strings.Join(segments, "`"), phs)
 }
 
 // stripHeadingMarkers removes bold markers and nested heading prefixes from

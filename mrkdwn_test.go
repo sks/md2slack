@@ -337,6 +337,28 @@ func TestConvert(t *testing.T) {
 			input:    "[ref]: https://first.com\n[ref]: https://second.com\n\n[text][ref]",
 			expected: "<https://first.com|text>",
 		},
+
+		// Links with backticks in text.
+		{
+			name:     "link with backtick text",
+			input:    "[`code`](https://example.com)",
+			expected: "<https://example.com|code>",
+		},
+		{
+			name:     "image link with backtick alt",
+			input:    "![`alt`](https://img.com/pic.png)",
+			expected: "<https://img.com/pic.png|alt>",
+		},
+		{
+			name:     "reference link with backtick text",
+			input:    "[`code`][ref]\n\n[ref]: https://example.com",
+			expected: "<https://example.com|code>",
+		},
+		{
+			name:     "link with backtick text inline",
+			input:    "See [`github.com/org/repo`](https://github.com/org/repo) for details",
+			expected: "See <https://github.com/org/repo|github.com/org/repo> for details",
+		},
 	}
 
 	for _, tt := range tests {
@@ -455,6 +477,7 @@ func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
 		"+ first\n+ second",
 		"```\ncode & <stuff>\n```",
 		"> block quote with & and **bold**",
+		"[`code`](https://example.com)",
 	}
 
 	for _, md := range markdownInputs {

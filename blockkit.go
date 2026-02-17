@@ -730,7 +730,7 @@ func parseInlineElements(text string) []RichTextElement {
 			elem: RichTextElement{
 				Type: "link",
 				URL:  text[loc[4]:loc[5]],
-				Text: text[loc[2]:loc[3]],
+				Text: strings.ReplaceAll(text[loc[2]:loc[3]], "`", ""),
 			},
 		})
 	}
@@ -747,7 +747,7 @@ func parseInlineElements(text string) []RichTextElement {
 			elem: RichTextElement{
 				Type: "link",
 				URL:  text[loc[4]:loc[5]],
-				Text: text[loc[2]:loc[3]],
+				Text: strings.ReplaceAll(text[loc[2]:loc[3]], "`", ""),
 			},
 		})
 	}

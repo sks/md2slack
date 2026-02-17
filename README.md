@@ -11,6 +11,7 @@
 - **Two output modes** — plain mrkdwn text or structured Block Kit blocks
 - **Rich Block Kit output** — headers, dividers, images, rich text lists, action buttons, and context blocks
 - **Reference links** — resolves `[text][ref]` and `![alt][ref]` style links before processing
+- **Backtick links** — handles `` [`code`](url) `` without breaking on backtick splitting
 - **Safe** — escapes `&`, `<`, `>` and protects code spans from transformation
 
 ## Install
@@ -176,6 +177,7 @@ blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/ico
 | `> quote` | `> quote` | Leading `>` preserved, inner `>` escaped |
 | `[text][ref]` / `[text][]` | `<url\|text>` | Reference definitions resolved then stripped |
 | `![alt][ref]` / `![alt][]` | `<url\|alt>` | Image reference definitions resolved then stripped |
+| `` [`code`](url) `` | `<url\|code>` | Backticks stripped from link text; works for images too |
 | `&`, `<`, `>` | `&amp;`, `&lt;`, `&gt;` | Escaped outside code blocks and quotes |
 
 ## Types

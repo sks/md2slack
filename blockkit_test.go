@@ -557,6 +557,30 @@ func TestConvertToBlocks(t *testing.T) {
 				{Type: "image", ImageURL: "https://example.com/banner.png", AltText: "banner"},
 			},
 		},
+
+		// Links with backticks in text.
+		{
+			name:  "list item with backtick link",
+			input: "- See [`code`](https://example.com) for details",
+			want: []Block{
+				{
+					Type: "rich_text",
+					RichElements: []RichTextSection{
+						{
+							Type:  "rich_text_list",
+							Style: "bullet",
+							Items: []RichTextSection{
+								{Type: "rich_text_section", Elements: []RichTextElement{
+									{Type: "text", Text: "See "},
+									{Type: "link", URL: "https://example.com", Text: "code"},
+									{Type: "text", Text: " for details"},
+								}},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -649,6 +673,20 @@ func TestParseInlineElements(t *testing.T) {
 			input: "`**not bold**`",
 			want: []RichTextElement{
 				{Type: "text", Text: "**not bold**", Style: &RichTextStyle{Code: true}},
+			},
+		},
+		{
+			name:  "link with backtick text",
+			input: "[`code`](https://example.com)",
+			want: []RichTextElement{
+				{Type: "link", URL: "https://example.com", Text: "code"},
+			},
+		},
+		{
+			name:  "image link with backtick alt",
+			input: "![`alt`](https://img.com/pic.png)",
+			want: []RichTextElement{
+				{Type: "link", URL: "https://img.com/pic.png", Text: "alt"},
 			},
 		},
 	}
