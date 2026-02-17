@@ -1,0 +1,30 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+md2slack is a Go library that converts standard Markdown into Slack-compatible formats. Two public functions: `Convert` (mrkdwn text) and `ConvertToBlocks` (Block Kit blocks). Zero external dependencies — stdlib only. Requires Go 1.22+.
+
+## Commands
+
+- **Run all tests:** `go test ./... -v`
+- **Run a single test:** `go test ./... -v -run TestConvert/bold_asterisks`
+- **Vet:** `go vet ./...`
+
+## Architecture
+
+Single flat package `md2slack` — no subpackages.
+
+- `mrkdwn.go` — Core `Convert()` function plus all unexported helpers. Processes input line-by-line: code fences toggle pass-through mode, all other lines go through `processInlineLine` which splits by backtick pairs (protecting inline code) then applies `applyInlineTransforms` (escaping, headings, bold, links, strikethrough, numbered lists in that order).
+- `blockkit.go` — `ConvertToBlocks()` wraps `Convert()` output in a single section block (stub for future richer block structures). Defines `Block` and `TextObject` types.
+- `doc.go` — Package-level godoc.
+- `example_test.go` — Runnable godoc examples (external test package `md2slack_test`). The `Example*` functions appear as code samples on pkg.go.dev, and `// Output:` comments make them double as regression tests — `go test` verifies the output stays correct.
+
+## Conventions
+
+- Package stays flat — no subpackages unless API surface grows significantly
+- Exported names rely on package qualifier: `md2slack.Convert`, not `md2slack.ConvertMarkdownToSlack`
+- All regex patterns are compiled once at package level (`var` block in `mrkdwn.go`)
+- Tests use table-driven style with descriptive sub-test names
+- `Convert` must be idempotent — already-converted mrkdwn passes through unchanged (verified by `TestConvert_Idempotent`)
