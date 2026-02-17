@@ -24,7 +24,128 @@ var (
 	reStandaloneLink    = regexp.MustCompile(`^\s*\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)\s*$`)
 	reOrderedListItem   = regexp.MustCompile(`^(\s*)\d+[.)]\s+(.*)`)
 	reUnorderedListItem = regexp.MustCompile(`^(\s*)[-*+]\s+(.*)`)
+
+	// Reference-style link patterns.
+	reRefDef   = regexp.MustCompile(`^\s{0,3}\[([^\]]+)\]:\s+<?([^\s>]+)>?(?:\s+["'(].*["')])?$`)
+	reRefLink  = regexp.MustCompile(`\[([^\]]+)\]\[([^\]]*)\]`)
+	reRefImage = regexp.MustCompile(`!\[([^\]]*)\]\[([^\]]*)\]`)
 )
+
+// resolveReferences converts reference-style links and images into inline form.
+// It scans for [ref]: url definitions (outside code fences), collects them into
+// a case-insensitive map, then replaces ![alt][ref] and [text][ref] usages with
+// their inline equivalents. Definition lines are stripped from the output.
+// For collapsed references like [text][], the text itself is used as the key.
+func resolveReferences(input string) string {
+	lines := strings.Split(input, "\n")
+
+	// Pass 1: collect definitions, recording which lines are definition-only.
+	refs := make(map[string]string)   // lowercase ref → url
+	isDef := make(map[int]bool)       // line index → is a definition line
+	inCodeBlock := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inCodeBlock = !inCodeBlock
+			continue
+		}
+		if inCodeBlock {
+			continue
+		}
+		if m := reRefDef.FindStringSubmatch(line); m != nil {
+			key := strings.ToLower(m[1])
+			if _, exists := refs[key]; !exists {
+				refs[key] = m[2]
+			}
+			isDef[i] = true
+		}
+	}
+
+	// Fast path: no definitions found.
+	if len(refs) == 0 {
+		return input
+	}
+
+	// Pass 2: replace usages and strip definition lines.
+	// Build a filtered line list, then rejoin.
+	filtered := make([]string, 0, len(lines))
+	inCodeBlock = false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inCodeBlock = !inCodeBlock
+		}
+
+		// Strip definition lines.
+		if isDef[i] {
+			continue
+		}
+
+		if !inCodeBlock {
+			// Replace image references first: ![alt][ref] → ![alt](url)
+			line = reRefImage.ReplaceAllStringFunc(line, func(match string) string {
+				m := reRefImage.FindStringSubmatch(match)
+				if m == nil {
+					return match
+				}
+				alt := m[1]
+				ref := m[2]
+				if ref == "" {
+					ref = alt // collapsed form ![ref][]
+				}
+				url, ok := refs[strings.ToLower(ref)]
+				if !ok {
+					return match
+				}
+				return "![" + alt + "](" + url + ")"
+			})
+
+			// Replace link references: [text][ref] → [text](url)
+			line = reRefLink.ReplaceAllStringFunc(line, func(match string) string {
+				m := reRefLink.FindStringSubmatch(match)
+				if m == nil {
+					return match
+				}
+				text := m[1]
+				ref := m[2]
+				if ref == "" {
+					ref = text // collapsed form [text][]
+				}
+				url, ok := refs[strings.ToLower(ref)]
+				if !ok {
+					return match
+				}
+				return "[" + text + "](" + url + ")"
+			})
+		}
+
+		filtered = append(filtered, line)
+	}
+
+	// Trim leading and trailing blank lines left by stripped definitions,
+	// and collapse runs of 3+ consecutive blank lines into 2.
+	for len(filtered) > 0 && strings.TrimSpace(filtered[0]) == "" {
+		filtered = filtered[1:]
+	}
+	for len(filtered) > 0 && strings.TrimSpace(filtered[len(filtered)-1]) == "" {
+		filtered = filtered[:len(filtered)-1]
+	}
+	var result []string
+	blanks := 0
+	for _, l := range filtered {
+		if strings.TrimSpace(l) == "" {
+			blanks++
+			if blanks > 2 {
+				continue
+			}
+		} else {
+			blanks = 0
+		}
+		result = append(result, l)
+	}
+
+	return strings.Join(result, "\n")
+}
 
 // Convert transforms standard Markdown into Slack's mrkdwn text format.
 //
@@ -57,6 +178,8 @@ func Convert(input string) string {
 	if input == "" {
 		return ""
 	}
+
+	input = resolveReferences(input)
 
 	lines := strings.Split(input, "\n")
 	var builder strings.Builder

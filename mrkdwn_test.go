@@ -285,6 +285,58 @@ func TestConvert(t *testing.T) {
 			input:    "* **Important** item",
 			expected: "- *Important* item",
 		},
+
+		// Reference-style links.
+		{
+			name:     "reference link resolved",
+			input:    "See [Google][goog] for search.\n\n[goog]: https://google.com",
+			expected: "See <https://google.com|Google> for search.",
+		},
+		{
+			name:     "collapsed reference link",
+			input:    "Visit [Google][] today.\n\n[Google]: https://google.com",
+			expected: "Visit <https://google.com|Google> today.",
+		},
+		{
+			name:     "reference link case insensitive",
+			input:    "See [Docs][DOCS-REF].\n\n[docs-ref]: https://docs.example.com",
+			expected: "See <https://docs.example.com|Docs>.",
+		},
+		{
+			name:     "reference image resolved",
+			input:    "![logo][logo-ref]\n\n[logo-ref]: https://img.com/logo.png",
+			expected: "<https://img.com/logo.png|logo>",
+		},
+		{
+			name:     "definition lines stripped",
+			input:    "Text.\n\n[ref]: https://example.com",
+			expected: "Text.",
+		},
+		{
+			name:     "undefined reference left as-is",
+			input:    "See [unknown][nope] link.",
+			expected: "See [unknown][nope] link.",
+		},
+		{
+			name:     "definition inside code fence ignored",
+			input:    "```\n[ref]: https://example.com\n```\n\n[text][ref]",
+			expected: "```\n[ref]: https://example.com\n```\n\n[text][ref]",
+		},
+		{
+			name:     "angle-bracket URL in definition",
+			input:    "[ref]: <https://example.com>\n\n[text][ref]",
+			expected: "<https://example.com|text>",
+		},
+		{
+			name:     "definition with title discarded",
+			input:    "[ref]: https://example.com \"Example\"\n\n[text][ref]",
+			expected: "<https://example.com|text>",
+		},
+		{
+			name:     "first definition wins",
+			input:    "[ref]: https://first.com\n[ref]: https://second.com\n\n[text][ref]",
+			expected: "<https://first.com|text>",
+		},
 	}
 
 	for _, tt := range tests {

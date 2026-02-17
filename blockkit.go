@@ -351,6 +351,8 @@ func ConvertToBlocks(markdown string) []Block {
 		}
 	}
 
+	markdown = resolveReferences(markdown)
+
 	lines := strings.Split(markdown, "\n")
 	var blocks []Block
 	var textBuf []string

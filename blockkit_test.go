@@ -525,6 +525,38 @@ func TestConvertToBlocks(t *testing.T) {
 				},
 			},
 		},
+
+		// Reference-style links in blocks.
+		{
+			name:  "reference link in text becomes section",
+			input: "See [Slack API][slack-api] docs.\n\n[slack-api]: https://api.slack.com",
+			want: []Block{
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "See <https://api.slack.com|Slack API> docs."}},
+			},
+		},
+		{
+			name:  "standalone reference link becomes actions block",
+			input: "[Slack API][slack-api]\n\n[slack-api]: https://api.slack.com",
+			want: []Block{
+				{
+					Type: "actions",
+					ActionElements: []ActionElement{
+						{
+							Type: "button",
+							Text: TextObject{Type: "plain_text", Text: "Slack API"},
+							URL:  "https://api.slack.com",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "reference image becomes image block",
+			input: "![banner][banner-ref]\n\n[banner-ref]: https://example.com/banner.png",
+			want: []Block{
+				{Type: "image", ImageURL: "https://example.com/banner.png", AltText: "banner"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
