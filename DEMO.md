@@ -98,7 +98,7 @@ This is **bold**, _italic_, and ~~strikethrough~~.
 
 > A blockquote with a [link](https://example.com)
 
-![gopher](https://go.dev/blog/gopher/header.jpg)
+![gopher](https://go.dev/doc/gopher/frontpage.png)
 `
 
 func postBlocks(token, channel string, blocks []slack.Block) {
