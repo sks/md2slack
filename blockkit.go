@@ -79,6 +79,11 @@ type TextObject struct {
 //
 // Type is one of "rich_text_section", "rich_text_preformatted",
 // "rich_text_quote", or "rich_text_list".
+//
+// For "rich_text_list" sections, Items holds the list item sections. Both
+// Elements (inline elements) and Items (list items) are serialized under the
+// JSON key "elements" as the Slack API expects, handled by custom
+// MarshalJSON/UnmarshalJSON methods.
 type RichTextSection struct {
 	// Type identifies the section kind.
 	Type string `json:"type"`
@@ -94,8 +99,8 @@ type RichTextSection struct {
 	Indent int `json:"indent,omitempty"`
 
 	// Items holds the list item sections for rich_text_list.
-	// Each item is a rich_text_section.
-	Items []RichTextSection `json:"items,omitempty"`
+	// Each item is a rich_text_section. Serialized as "elements" in JSON.
+	Items []RichTextSection `json:"-"`
 }
 
 // RichTextElement represents an inline element within a rich text section.
@@ -238,6 +243,70 @@ func (b *Block) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for RichTextSection.
+//
+// The Slack API expects "rich_text_list" sections to use the JSON key
+// "elements" for their child items, the same key used by other section types
+// for inline elements. This method serializes the Items field as "elements"
+// when the section type is "rich_text_list".
+func (s RichTextSection) MarshalJSON() ([]byte, error) {
+	type sectionAlias RichTextSection
+
+	if s.Type != "rich_text_list" || len(s.Items) == 0 {
+		return json.Marshal(struct {
+			sectionAlias
+		}{sectionAlias: sectionAlias(s)})
+	}
+
+	// For rich_text_list, serialize Items as "elements" and suppress the
+	// inline Elements field (which is empty for list sections).
+	return json.Marshal(struct {
+		Type     string            `json:"type"`
+		Style    string            `json:"style,omitempty"`
+		Indent   int               `json:"indent,omitempty"`
+		Elements []RichTextSection `json:"elements"`
+	}{
+		Type:     s.Type,
+		Style:    s.Style,
+		Indent:   s.Indent,
+		Elements: s.Items,
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for RichTextSection.
+//
+// It reads the "type" field first, then deserializes the "elements" JSON key
+// into either Elements (inline elements) or Items (list items) depending on
+// whether the section type is "rich_text_list".
+func (s *RichTextSection) UnmarshalJSON(data []byte) error {
+	type sectionAlias RichTextSection
+
+	var alias sectionAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*s = RichTextSection(alias)
+
+	if s.Type != "rich_text_list" {
+		return nil
+	}
+
+	// For rich_text_list, "elements" contains child sections (Items), not
+	// inline elements. Re-parse into Items and clear Elements.
+	var raw struct {
+		Elements json.RawMessage `json:"elements"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Elements == nil {
+		return nil
+	}
+
+	s.Elements = nil
+	return json.Unmarshal(raw.Elements, &s.Items)
 }
 
 // ConvertToBlocks transforms Markdown into Slack Block Kit blocks.

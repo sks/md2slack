@@ -111,7 +111,7 @@ func ExampleConvertToBlocks_orderedList() {
 	//       {
 	//         "type": "rich_text_list",
 	//         "style": "ordered",
-	//         "items": [
+	//         "elements": [
 	//           {
 	//             "type": "rich_text_section",
 	//             "elements": [
