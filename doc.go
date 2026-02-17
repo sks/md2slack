@@ -1,42 +1,45 @@
-// Package md2slack converts standard Markdown into Slack-compatible formats.
+// Package md2slack converts standard Markdown into Slack Block Kit blocks
+// using proper AST-based parsing via goldmark and canonical Slack types from
+// slack-go/slack.
 //
-// It provides two conversion functions:
+// It provides two main functions:
 //
-//   - [Convert] transforms Markdown into Slack's mrkdwn text format, suitable
-//     for use in message text, attachments, and any Slack API field that accepts
-//     mrkdwn.
+//   - [Convert] parses Markdown (including GFM extensions) and returns
+//     []slack.Block suitable for use in the "blocks" field of Slack API
+//     payloads. Headings become HeaderBlocks, horizontal rules become
+//     DividerBlocks, images become ImageBlocks, fenced code becomes
+//     RichTextPreformatted, lists become RichTextList, blockquotes become
+//     RichTextQuote, tables become SectionBlocks with code-fenced monospace,
+//     and inline text with formatting becomes RichTextSection elements.
 //
-//   - [ConvertToBlocks] transforms Markdown into Slack [Block Kit] blocks,
-//     suitable for use in the "blocks" field of Slack API payloads. It splits
-//     input into semantically appropriate block types: headings become "header"
-//     blocks, horizontal rules become "divider" blocks, blockquotes become
-//     "context" blocks, standalone images become "image" blocks, and remaining
-//     text is grouped into "section" blocks split at paragraph boundaries.
+//   - [ChunkBlocks] splits a block slice into chunks of at most N blocks,
+//     useful for respecting Slack's 50-block-per-message limit.
 //
 // # Supported Markdown features
 //
-//   - Headings (## Heading → *Heading*)
-//   - Bold (**text** and __text__ → *text*)
-//   - Italic (_text_ passes through as Slack italic)
-//   - Strikethrough (~~text~~ → ~text~)
-//   - Links ([text](url) → <url|text>)
-//   - Image links (![alt](url) → <url|alt>)
-//   - Numbered lists (1. item → - item)
-//   - Unordered lists (* item and + item → - item)
-//   - Fenced code blocks (``` and ~~~ preserved as-is)
-//   - Inline code (protected from transformation)
-//   - Block quotes (> preserved)
-//   - Automatic escaping of &, <, > for Slack
+//   - Headings (# through ######) → HeaderBlock (plain_text, max 150 chars)
+//   - Bold (**text**) → RichTextSectionTextStyle{Bold: true}
+//   - Italic (*text* / _text_) → RichTextSectionTextStyle{Italic: true}
+//   - Bold+Italic (***text***) → Both Bold and Italic
+//   - Strikethrough (~~text~~) → RichTextSectionTextStyle{Strike: true}
+//   - Inline code (`code`) → RichTextSectionTextStyle{Code: true}
+//   - Links ([text](url)) → RichTextSectionLinkElement
+//   - Images (![alt](url)) → ImageBlock (standalone) or link (inline)
+//   - Fenced code blocks (```) → RichTextPreformatted
+//   - Blockquotes (> text) → RichTextQuote
+//   - Ordered lists (1. item) → RichTextList (ordered)
+//   - Unordered lists (- item) → RichTextList (bullet)
+//   - Nested lists → RichTextList with indent levels
+//   - GFM tables → SectionBlock with code-fenced monospace
+//   - Horizontal rules (---) → DividerBlock
+//   - Standalone links → ActionBlock with button
+//   - Task checkboxes (- [x] item) → checkbox emoji
+//   - Reference-style links ([text][ref]) → resolved via goldmark
 //
-// # Idempotency
+// # Dependencies
 //
-// [Convert] is idempotent: passing already-converted mrkdwn through a second
-// time produces the same output. This makes it safe to apply unconditionally
-// without tracking whether text has already been converted.
-//
-// # Zero dependencies
-//
-// The package uses only the Go standard library.
+// This package uses goldmark for Markdown parsing and slack-go/slack for
+// canonical Slack Block Kit types.
 //
 // [Block Kit]: https://api.slack.com/block-kit
 package md2slack

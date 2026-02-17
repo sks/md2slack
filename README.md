@@ -4,15 +4,13 @@
 [![CI](https://github.com/navidemad/md2slack/actions/workflows/ci.yml/badge.svg)](https://github.com/navidemad/md2slack/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/navidemad/md2slack)](https://goreportcard.com/report/github.com/navidemad/md2slack)
 
-> Convert standard Markdown into Slack-compatible formats — [mrkdwn] text and [Block Kit] blocks.
+> Convert standard Markdown into Slack [Block Kit] blocks.
 
-- **Zero dependencies** — stdlib only
-- **Idempotent** — already-converted mrkdwn passes through unchanged
-- **Two output modes** — plain mrkdwn text or structured Block Kit blocks
-- **Rich Block Kit output** — headers, dividers, images, rich text lists (with nested indent support), action buttons, context blocks, and tables
-- **Reference links** — resolves `[text][ref]` and `![alt][ref]` style links before processing
-- **Backtick links** — handles `` [`code`](url) `` without breaking on backtick splitting
-- **Safe** — escapes `&`, `<`, `>` and protects code spans from transformation
+- **AST-based parsing** — uses [goldmark] with GFM extensions for correct handling of nested/complex markdown
+- **Native Slack types** — returns `[]slack.Block` from [slack-go/slack], ready for direct API use
+- **Rich output** — headers, dividers, images, rich text (bold, italic, strikethrough, code), lists with nested indent, action buttons, blockquotes, code blocks, and tables
+- **GFM support** — tables, strikethrough, task checkboxes, autolinks
+- **Message chunking** — `ChunkBlocks` splits output for Slack's 50-block-per-message limit
 
 ## Install
 
@@ -24,27 +22,16 @@ Requires **Go 1.22+**.
 
 ## Quick start
 
-### Mrkdwn text
-
 ```go
-import "github.com/navidemad/md2slack"
+import (
+	"github.com/navidemad/md2slack"
+	"github.com/slack-go/slack"
+)
 
-out := md2slack.Convert("## Hello\n\nThis is **bold** and a [link](https://example.com).")
+blocks, err := md2slack.Convert("# Welcome\n\nHello **world**.\n\n---\n\n![banner](https://example.com/banner.png)")
 ```
 
-Output:
-
-```
-*Hello*
-
-This is *bold* and a <https://example.com|link>.
-```
-
-### Block Kit blocks
-
-```go
-blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![banner](https://example.com/banner.png)")
-```
+Output blocks (as JSON):
 
 ```json
 [
@@ -53,8 +40,17 @@ blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![ba
     "text": { "type": "plain_text", "text": "Welcome" }
   },
   {
-    "type": "section",
-    "text": { "type": "mrkdwn", "text": "Hello *world*." }
+    "type": "rich_text",
+    "elements": [
+      {
+        "type": "rich_text_section",
+        "elements": [
+          { "type": "text", "text": "Hello " },
+          { "type": "text", "text": "world", "style": { "bold": true } },
+          { "type": "text", "text": "." }
+        ]
+      }
+    ]
   },
   { "type": "divider" },
   {
@@ -65,28 +61,36 @@ blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![ba
 ]
 ```
 
-`ConvertToBlocks` scans the input line-by-line and produces semantically appropriate block types:
+### Block type mapping
 
 | Markdown construct | Block Kit block type |
 | :--- | :--- |
-| `# Heading` through `###### Heading` | `header` (plain\_text) |
+| `# Heading` through `######` | `header` (plain\_text, max 150 chars; falls back to bold mrkdwn `section` for links or overflow) |
 | `---`, `***`, `___` | `divider` |
-| `![alt](url)` (standalone line) | `image` |
-| `[text](url)` (standalone line) | `actions` (button element) |
-| `1. item` / `- item` / `* item` | `rich_text` (`rich_text_list` with ordered/bullet style, nested indent support) |
-| `> quote` | `context` (mrkdwn elements; images split out) |
-| Fenced code blocks (`` ``` `` / `~~~`) | `section` (mrkdwn with `` ``` `` delimiters) |
-| Tables (`\| H \| H \|` / `\|---\|---\|`) | `section` (mrkdwn with `` ``` `` delimiters, column-aligned) |
-| Everything else | `section` (mrkdwn), split at blank lines |
+| `![alt](url)` (standalone) | `image` |
+| `[text](url)` (standalone) | `actions` (button element) |
+| `> quote` | `rich_text` (`rich_text_quote`) |
+| Fenced code blocks (`` ``` ``) | `rich_text` (`rich_text_preformatted`) |
+| `1. item` / `- item` | `rich_text` (`rich_text_list` with ordered/bullet style, nested indent) |
+| GFM tables | `section` (mrkdwn with code-fenced monospace, column-aligned) |
+| Inline text with formatting | `rich_text` (`rich_text_section` with styled elements) |
 
-Inline images within text remain as mrkdwn links (`<url|alt>`) inside section blocks.
+### Inline formatting
 
-### Ordered and unordered lists
-
-Lists are emitted as `rich_text` blocks with proper list semantics, preserving ordered vs. unordered style. Indented sub-lists are grouped at the correct indent level:
+Bold, italic, strikethrough, and inline code are represented as `RichTextSectionTextElement` entries with style flags rather than mrkdwn strings:
 
 ```go
-blocks := md2slack.ConvertToBlocks("1. First item\n  - Sub-item A\n  - Sub-item B\n2. Second item")
+blocks, _ := md2slack.Convert("**bold** and _italic_ and ~~strike~~ and `code`")
+```
+
+Links become `RichTextSectionLinkElement` with the URL and display text.
+
+### Lists
+
+Lists are emitted as `rich_text` blocks with `rich_text_list` elements. Nested sub-lists use Slack's `indent` field:
+
+```go
+blocks, _ := md2slack.Convert("1. First\n   - Sub-item A\n   - Sub-item B\n2. Second")
 ```
 
 ```json
@@ -97,10 +101,11 @@ blocks := md2slack.ConvertToBlocks("1. First item\n  - Sub-item A\n  - Sub-item 
       {
         "type": "rich_text_list",
         "style": "ordered",
+        "indent": 0,
         "elements": [
           {
             "type": "rich_text_section",
-            "elements": [{ "type": "text", "text": "First item" }]
+            "elements": [{ "type": "text", "text": "First" }]
           }
         ]
       },
@@ -122,10 +127,11 @@ blocks := md2slack.ConvertToBlocks("1. First item\n  - Sub-item A\n  - Sub-item 
       {
         "type": "rich_text_list",
         "style": "ordered",
+        "indent": 0,
         "elements": [
           {
             "type": "rich_text_section",
-            "elements": [{ "type": "text", "text": "Second item" }]
+            "elements": [{ "type": "text", "text": "Second" }]
           }
         ]
       }
@@ -134,14 +140,12 @@ blocks := md2slack.ConvertToBlocks("1. First item\n  - Sub-item A\n  - Sub-item 
 ]
 ```
 
-Inline formatting within list items is parsed into structured elements with style flags (`bold`, `italic`, `strikethrough`, `code`) rather than mrkdwn strings. Mixed list types (e.g., ordered items with nested bullet sub-lists) are kept in a single `rich_text` block.
-
 ### Standalone links as buttons
 
-A line containing only a markdown link becomes an `actions` block with a clickable button:
+A paragraph containing only a markdown link becomes an `actions` block with a clickable button:
 
 ```go
-blocks := md2slack.ConvertToBlocks("[Click here](https://example.com)")
+blocks, _ := md2slack.Convert("[Click here](https://example.com)")
 ```
 
 ```json
@@ -159,86 +163,46 @@ blocks := md2slack.ConvertToBlocks("[Click here](https://example.com)")
 ]
 ```
 
-Links embedded within text continue to render as mrkdwn links in section blocks.
+### Message chunking
 
-### Blockquotes with images
-
-Blockquotes containing image references split them into separate context elements:
+Slack limits messages to 50 blocks. Use `ChunkBlocks` to split:
 
 ```go
-blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/icon.png) out")
+blocks, _ := md2slack.Convert(longMarkdown)
+chunks := md2slack.ChunkBlocks(blocks, 50)
+for _, chunk := range chunks {
+    // post each chunk as a separate message
+}
 ```
 
-```json
-[
-  {
-    "type": "context",
-    "elements": [
-      { "type": "mrkdwn", "text": "Check this" },
-      { "type": "image", "image_url": "https://example.com/icon.png", "alt_text": "icon" },
-      { "type": "mrkdwn", "text": "out" }
-    ]
-  }
-]
+## API
+
+### `Convert(markdown string) ([]slack.Block, error)`
+
+Parses a Markdown string and returns Slack Block Kit blocks. Returns `nil, nil` for empty input.
+
+### `ChunkBlocks(blocks []slack.Block, maxPerMessage int) [][]slack.Block`
+
+Splits a block slice into chunks of at most `maxPerMessage`. Defaults to 50 if `maxPerMessage <= 0`.
+
+## CLI example
+
+The `cmd/example` directory contains a CLI tool that reads markdown from stdin or a file and prints the Block Kit JSON:
+
+```bash
+echo "## Hello\n\n**bold** and _italic_" | go run ./cmd/example/
 ```
 
-### Tables
+## Dependencies
 
-Markdown tables are rendered as column-aligned monospace text inside code fences, since Slack has no native table support. Inline formatting in cells is stripped to plain text, and column alignment (`:---`, `:---:`, `---:`) from the separator row is respected:
-
-```go
-out := md2slack.Convert("| Name | Score |\n|------|------:|\n| Alice | 100 |\n| Bob | 85 |")
-// Output is wrapped in ``` fences:
-// ```
-// Name  | Score
-// ----- | -----
-// Alice |   100
-// Bob   |    85
-// ```
-```
-
-In `ConvertToBlocks`, tables become `section` blocks with the same code-fenced content.
-
-## Conversion reference
-
-| Markdown | Slack mrkdwn | Notes |
-| :--- | :--- | :--- |
-| `**bold**` / `__bold__` | `*bold*` | |
-| `***bold italic***` / `___bold italic___` | `*_bold italic_*` | Combined bold and italic |
-| `~~strikethrough~~` | `~strikethrough~` | |
-| `[text](url)` | `<url\|text>` | Pipes escaped as `%7C`, nested parens supported |
-| `_italic_` | `_italic_` | Underscore italic passes through unchanged |
-| `![alt](url)` | `<url\|alt>` | Standalone lines become image blocks in `ConvertToBlocks` |
-| `# Heading` | `*Heading*` | All levels h1–h6; header blocks in `ConvertToBlocks` |
-| `1. item` / `1) item` | `- item` | Rich text list blocks in `ConvertToBlocks` |
-| `* item` / `+ item` | `- item` | Rich text list blocks in `ConvertToBlocks` |
-| `` `code` `` | `` `code` `` | Content left untouched |
-| ` ``` ` code blocks | ` ``` ` code blocks | Language hint stripped, content preserved |
-| `> quote` | `> quote` | Leading `>` preserved, inner `>` escaped |
-| `[text][ref]` / `[text][]` | `<url\|text>` | Reference definitions resolved then stripped |
-| `![alt][ref]` / `![alt][]` | `<url\|alt>` | Image reference definitions resolved then stripped |
-| `` [`code`](url) `` | `<url\|code>` | Backticks stripped from link text; works for images too |
-| `\| H \| H \|` tables | `` ``` `` code block | Column-aligned monospace; inline markdown stripped |
-| `&`, `<`, `>` | `&amp;`, `&lt;`, `&gt;` | Escaped outside code blocks and quotes |
-
-## Types
-
-`ConvertToBlocks` returns `[]Block`. The key types:
-
-| Type | Purpose |
+| Package | Purpose |
 | :--- | :--- |
-| `Block` | A single Block Kit layout block (`section`, `header`, `divider`, `image`, `rich_text`, `actions`, `context`) |
-| `TextObject` | Text composition object (`mrkdwn` or `plain_text`); also used for image elements in context blocks |
-| `RichTextSection` | Section within a `rich_text` block (`rich_text_section`, `rich_text_list`, `rich_text_preformatted`, `rich_text_quote`) |
-| `RichTextElement` | Inline element (`text` or `link`) with optional `Style` |
-| `RichTextStyle` | Formatting flags: `Bold`, `Italic`, `Strikethrough`, `Code` |
-| `ActionElement` | Interactive element (`button`) with `Text` and `URL` |
-
-All types serialize to JSON matching the [Slack Block Kit specification][Block Kit].
+| [github.com/yuin/goldmark](https://github.com/yuin/goldmark) | GFM-compliant Markdown parser (AST-based) |
+| [github.com/slack-go/slack](https://github.com/slack-go/slack) | Canonical Slack Block Kit types |
 
 ## Demo
 
-See [DEMO.md](DEMO.md) for a standalone script that posts converted Markdown to a Slack channel using both `Convert` and `ConvertToBlocks`.
+See [DEMO.md](DEMO.md) for a standalone script that posts converted Markdown to a Slack channel.
 
 ## Contributing
 
@@ -248,5 +212,6 @@ Fork the repository and open a pull request. Contributions are welcome!
 
 [MIT](LICENSE)
 
-[mrkdwn]: https://api.slack.com/reference/surfaces/formatting
+[goldmark]: https://github.com/yuin/goldmark
+[slack-go/slack]: https://github.com/slack-go/slack
 [Block Kit]: https://api.slack.com/block-kit
