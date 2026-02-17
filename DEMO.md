@@ -113,7 +113,7 @@ func postBlocks(token, channel string, blocks []md2slack.Block) {
 func slackPost(token string, payload []byte) string {
 	req, _ := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

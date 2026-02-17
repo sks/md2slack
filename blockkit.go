@@ -477,18 +477,11 @@ func ConvertToBlocks(markdown string) []Block {
 			if alt == "" {
 				alt = " "
 			}
-			block := Block{
+			blocks = append(blocks, Block{
 				Type:     "image",
 				ImageURL: m[2],
 				AltText:  alt,
-			}
-			if m[1] != "" {
-				block.Title = &TextObject{
-					Type: "plain_text",
-					Text: m[1],
-				}
-			}
-			blocks = append(blocks, block)
+			})
 			continue
 		}
 

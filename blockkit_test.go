@@ -86,7 +86,7 @@ func TestConvertToBlocks(t *testing.T) {
 			name:  "standalone image",
 			input: "![logo](https://example.com/logo.png)",
 			want: []Block{
-				{Type: "image", ImageURL: "https://example.com/logo.png", AltText: "logo", Title: &TextObject{Type: "plain_text", Text: "logo"}},
+				{Type: "image", ImageURL: "https://example.com/logo.png", AltText: "logo"},
 			},
 		},
 		{
@@ -148,7 +148,7 @@ func TestConvertToBlocks(t *testing.T) {
 				{Type: "header", Text: &TextObject{Type: "plain_text", Text: "Welcome"}},
 				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "Hello *world*."}},
 				{Type: "divider"},
-				{Type: "image", ImageURL: "https://example.com/banner.png", AltText: "banner", Title: &TextObject{Type: "plain_text", Text: "banner"}},
+				{Type: "image", ImageURL: "https://example.com/banner.png", AltText: "banner"},
 				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "```\ncode here\n```"}},
 				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "Goodbye."}},
 			},
