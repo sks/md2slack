@@ -10,6 +10,7 @@
 - **Idempotent** — already-converted mrkdwn passes through unchanged
 - **Two output modes** — plain mrkdwn text or structured Block Kit blocks
 - **Rich Block Kit output** — headers, dividers, images, rich text lists, action buttons, and context blocks
+- **Reference links** — resolves `[text][ref]` and `![alt][ref]` style links before processing
 - **Safe** — escapes `&`, `<`, `>` and protects code spans from transformation
 
 ## Install
@@ -58,8 +59,7 @@ blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![ba
   {
     "type": "image",
     "image_url": "https://example.com/banner.png",
-    "alt_text": "banner",
-    "title": { "type": "plain_text", "text": "banner" }
+    "alt_text": "banner"
   }
 ]
 ```
@@ -174,6 +174,8 @@ blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/ico
 | `` `code` `` | `` `code` `` | Content left untouched |
 | ` ``` ` code blocks | ` ``` ` code blocks | Language hint stripped, content preserved |
 | `> quote` | `> quote` | Leading `>` preserved, inner `>` escaped |
+| `[text][ref]` / `[text][]` | `<url\|text>` | Reference definitions resolved then stripped |
+| `![alt][ref]` / `![alt][]` | `<url\|alt>` | Image reference definitions resolved then stripped |
 | `&`, `<`, `>` | `&amp;`, `&lt;`, `&gt;` | Escaped outside code blocks and quotes |
 
 ## Types
