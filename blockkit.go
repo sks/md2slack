@@ -359,6 +359,7 @@ func ConvertToBlocks(markdown string) []Block {
 	var quoteBuf []string
 	inCodeBlock := false
 	var codeBuf []string
+	var tableBuf []string
 
 	// List accumulation state.
 	type listItem struct {
@@ -396,11 +397,27 @@ func ConvertToBlocks(markdown string) []Block {
 		listStyle = ""
 	}
 
+	flushTable := func() {
+		if len(tableBuf) == 0 {
+			return
+		}
+		text := "```\n" + formatTable(tableBuf) + "\n```"
+		blocks = append(blocks, Block{
+			Type: "section",
+			Text: &TextObject{
+				Type: "mrkdwn",
+				Text: text,
+			},
+		})
+		tableBuf = nil
+	}
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		// Check for code fence toggle.
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			flushTable()
 			if inCodeBlock {
 				// Closing fence -- emit the code block.
 				flushList()
@@ -424,6 +441,7 @@ func ConvertToBlocks(markdown string) []Block {
 
 		// Block quote -- context block.
 		if strings.HasPrefix(trimmed, "> ") || trimmed == ">" {
+			flushTable()
 			flushList()
 			blocks = flushTextBuffer(blocks, textBuf)
 			textBuf = nil
@@ -445,6 +463,21 @@ func ConvertToBlocks(markdown string) []Block {
 			blocks = flushQuoteBuffer(blocks, quoteBuf)
 			quoteBuf = nil
 		}
+
+		// Table line detection — buffer table rows.
+		if isTableLine(line) {
+			// Starting a new table: flush pending text/list content.
+			if len(tableBuf) == 0 {
+				flushList()
+				blocks = flushTextBuffer(blocks, textBuf)
+				textBuf = nil
+			}
+			tableBuf = append(tableBuf, line)
+			continue
+		}
+
+		// Non-table line: flush any buffered table.
+		flushTable()
 
 		// Horizontal rule -- divider block.
 		if reHorizontalRule.MatchString(line) {
@@ -562,6 +595,7 @@ func ConvertToBlocks(markdown string) []Block {
 		// Unclosed code fence -- emit what we have.
 		blocks = appendCodeBlock(blocks, codeBuf)
 	} else {
+		flushTable()
 		flushList()
 		blocks = flushTextBuffer(blocks, textBuf)
 	}

@@ -9,7 +9,7 @@
 - **Zero dependencies** — stdlib only
 - **Idempotent** — already-converted mrkdwn passes through unchanged
 - **Two output modes** — plain mrkdwn text or structured Block Kit blocks
-- **Rich Block Kit output** — headers, dividers, images, rich text lists, action buttons, and context blocks
+- **Rich Block Kit output** — headers, dividers, images, rich text lists, action buttons, context blocks, and tables
 - **Reference links** — resolves `[text][ref]` and `![alt][ref]` style links before processing
 - **Backtick links** — handles `` [`code`](url) `` without breaking on backtick splitting
 - **Safe** — escapes `&`, `<`, `>` and protects code spans from transformation
@@ -76,6 +76,7 @@ blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![ba
 | `1. item` / `- item` / `* item` | `rich_text` (`rich_text_list` with ordered/bullet style) |
 | `> quote` | `context` (mrkdwn elements; images split out) |
 | Fenced code blocks (`` ``` `` / `~~~`) | `section` (mrkdwn with `` ``` `` delimiters) |
+| Tables (`\| H \| H \|` / `\|---\|---\|`) | `section` (mrkdwn with `` ``` `` delimiters, column-aligned) |
 | Everything else | `section` (mrkdwn), split at blank lines |
 
 Inline images within text remain as mrkdwn links (`<url|alt>`) inside section blocks.
@@ -160,6 +161,23 @@ blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/ico
 ]
 ```
 
+### Tables
+
+Markdown tables are rendered as column-aligned monospace text inside code fences, since Slack has no native table support. Inline formatting in cells is stripped to plain text, and column alignment (`:---`, `:---:`, `---:`) from the separator row is respected:
+
+```go
+out := md2slack.Convert("| Name | Score |\n|------|------:|\n| Alice | 100 |\n| Bob | 85 |")
+// Output is wrapped in ``` fences:
+// ```
+// Name  | Score
+// ----- | -----
+// Alice |   100
+// Bob   |    85
+// ```
+```
+
+In `ConvertToBlocks`, tables become `section` blocks with the same code-fenced content.
+
 ## Conversion reference
 
 | Markdown | Slack mrkdwn | Notes |
@@ -178,6 +196,7 @@ blocks := md2slack.ConvertToBlocks("> Check this ![icon](https://example.com/ico
 | `[text][ref]` / `[text][]` | `<url\|text>` | Reference definitions resolved then stripped |
 | `![alt][ref]` / `![alt][]` | `<url\|alt>` | Image reference definitions resolved then stripped |
 | `` [`code`](url) `` | `<url\|code>` | Backticks stripped from link text; works for images too |
+| `\| H \| H \|` tables | `` ``` `` code block | Column-aligned monospace; inline markdown stripped |
 | `&`, `<`, `>` | `&amp;`, `&lt;`, `&gt;` | Escaped outside code blocks and quotes |
 
 ## Types

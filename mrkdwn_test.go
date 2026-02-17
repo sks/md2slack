@@ -338,6 +338,58 @@ func TestConvert(t *testing.T) {
 			expected: "<https://first.com|text>",
 		},
 
+		// Tables.
+		{
+			name:     "simple table",
+			input:    "| Name | Age |\n|------|-----|\n| Alice | 30 |",
+			expected: "```\nName  | Age\n----- | ---\nAlice | 30\n```",
+		},
+		{
+			name:     "table with bold and code cells",
+			input:    "| Header | Value |\n|--------|-------|\n| **bold** | `code` |",
+			expected: "```\nHeader | Value\n------ | -----\nbold   | code\n```",
+		},
+		{
+			name:     "table between paragraphs",
+			input:    "Before.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter.",
+			expected: "Before.\n\n```\nA   | B\n--- | ---\n1   | 2\n```\n\nAfter.",
+		},
+		{
+			name:     "table at end of input",
+			input:    "Text.\n\n| X |\n|---|\n| Y |",
+			expected: "Text.\n\n```\nX\n---\nY\n```",
+		},
+		{
+			name:     "table without separator row",
+			input:    "| A | B |\n| 1 | 2 |\n| 3 | 4 |",
+			expected: "```\nA   | B\n1   | 2\n3   | 4\n```",
+		},
+		{
+			name:     "single column table",
+			input:    "| Item |\n|------|\n| One |\n| Two |",
+			expected: "```\nItem\n----\nOne\nTwo\n```",
+		},
+		{
+			name:     "table with empty cells",
+			input:    "| A | B |\n|---|---|\n|   | 2 |",
+			expected: "```\nA   | B\n--- | ---\n    | 2\n```",
+		},
+		{
+			name:     "table with right alignment",
+			input:    "| Name | Score |\n|------|------:|\n| Alice | 100 |",
+			expected: "```\nName  | Score\n----- | -----\nAlice |   100\n```",
+		},
+		{
+			name:     "table with center alignment",
+			input:    "| Name | Status |\n|------|:------:|\n| Test | OK |",
+			expected: "```\nName | Status\n---- | ------\nTest |   OK\n```",
+		},
+		{
+			name:     "table with link in cell",
+			input:    "| Page |\n|------|\n| [Go](https://go.dev) |",
+			expected: "```\nPage\n----\nGo\n```",
+		},
+
 		// Links with backticks in text.
 		{
 			name:     "link with backtick text",
@@ -448,6 +500,7 @@ func TestConvert_Idempotent(t *testing.T) {
 		"See <https://example.com|link> &amp; more",
 		"<https://example.com>",
 		"> block quote with &amp; entity",
+		"```\nA | B\n- | -\n1 | 2\n```",
 	}
 
 	for _, input := range inputs {
@@ -478,6 +531,7 @@ func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
 		"```\ncode & <stuff>\n```",
 		"> block quote with & and **bold**",
 		"[`code`](https://example.com)",
+		"| A | B |\n|---|---|\n| 1 | 2 |",
 	}
 
 	for _, md := range markdownInputs {
@@ -486,6 +540,54 @@ func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
 		if first != second {
 			t.Errorf("Not idempotent from markdown %q:\n  first:  %q\n  second: %q", md, first, second)
 		}
+	}
+}
+
+func TestFormatTable(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{
+			name:  "simple two column",
+			lines: []string{"| A | B |", "|---|---|", "| 1 | 2 |"},
+			want:  "A   | B\n--- | ---\n1   | 2",
+		},
+		{
+			name:  "strips bold from cells",
+			lines: []string{"| H |", "|---|", "| **bold** |"},
+			want:  "H\n----\nbold",
+		},
+		{
+			name:  "right aligned",
+			lines: []string{"| Name | Num |", "|------|----:|", "| A | 10 |", "| BC | 5 |"},
+			want:  "Name | Num\n---- | ---\nA    |  10\nBC   |   5",
+		},
+		{
+			name:  "center aligned",
+			lines: []string{"| X |", "|:---:|", "| Hi |"},
+			want:  " X\n---\nHi",
+		},
+		{
+			name:  "no separator row",
+			lines: []string{"| A | B |", "| 1 | 2 |"},
+			want:  "A   | B\n1   | 2",
+		},
+		{
+			name:  "uneven columns padded",
+			lines: []string{"| Short | LongHeader |", "|-------|------------|", "| A | B |"},
+			want:  "Short | LongHeader\n----- | ----------\nA     | B",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatTable(tt.lines)
+			if got != tt.want {
+				t.Errorf("formatTable()\ngot:\n%s\nwant:\n%s", got, tt.want)
+			}
+		})
 	}
 }
 

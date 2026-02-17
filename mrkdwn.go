@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Package-level compiled regexps for inline transforms.
@@ -30,6 +31,12 @@ var (
 	reRefDef   = regexp.MustCompile(`^\s{0,3}\[([^\]]+)\]:\s+<?([^\s>]+)>?(?:\s+["'(].*["')])?$`)
 	reRefLink  = regexp.MustCompile(`\[([^\]]+)\]\[([^\]]*)\]`)
 	reRefImage = regexp.MustCompile(`!\[([^\]]*)\]\[([^\]]*)\]`)
+)
+
+// Table detection patterns.
+var (
+	reTableLine    = regexp.MustCompile(`^\s*\|.*\|`)
+	reTableSepCell = regexp.MustCompile(`^\s*:?-+:?\s*$`)
 )
 
 // reBacktickImageLink matches image links whose alt text contains backticks: ![`alt`](url)
@@ -223,6 +230,208 @@ func resolveReferences(input string) string {
 	return strings.Join(result, "\n")
 }
 
+// isTableLine reports whether line looks like a markdown table row (starts with |, contains another |).
+func isTableLine(line string) bool {
+	return reTableLine.MatchString(line)
+}
+
+// isTableSeparator reports whether line is a table separator row like |---|:---:|---:|.
+func isTableSeparator(line string) bool {
+	cells := splitTableRow(line)
+	if len(cells) == 0 {
+		return false
+	}
+	for _, c := range cells {
+		if !reTableSepCell.MatchString(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// splitTableRow splits a pipe-delimited table row into cells, trimming outer
+// pipes and whitespace from each cell.
+func splitTableRow(line string) []string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "|")
+	line = strings.TrimSuffix(line, "|")
+	parts := strings.Split(line, "|")
+	cells := make([]string, len(parts))
+	for i, p := range parts {
+		cells[i] = strings.TrimSpace(p)
+	}
+	return cells
+}
+
+// stripInlineMarkdown removes markdown formatting markers from a cell string,
+// leaving plain text. Used when rendering table cells inside code fences where
+// formatting has no effect.
+func stripInlineMarkdown(cell string) string {
+	// Image links: ![alt](url) → alt
+	cell = reImageLink.ReplaceAllString(cell, "$1")
+	// Regular links: [text](url) → text
+	cell = reLink.ReplaceAllString(cell, "$1")
+	// Bold: **text** → text
+	cell = reBoldAsterisks.ReplaceAllString(cell, "$1")
+	// Bold: __text__ → text
+	cell = reBoldUnders.ReplaceAllString(cell, "$1")
+	// Inline code: `text` → text
+	cell = reInlineCode.ReplaceAllString(cell, "$1")
+	// Strikethrough: ~~text~~ → text
+	cell = reStrikethrough.ReplaceAllString(cell, "$1")
+	return cell
+}
+
+// tableAlignment represents the alignment of a table column.
+type tableAlignment int
+
+const (
+	alignLeft tableAlignment = iota
+	alignCenter
+	alignRight
+)
+
+// parseAlignments extracts column alignments from a separator row.
+func parseAlignments(sepCells []string) []tableAlignment {
+	aligns := make([]tableAlignment, len(sepCells))
+	for i, c := range sepCells {
+		c = strings.TrimSpace(c)
+		left := strings.HasPrefix(c, ":")
+		right := strings.HasSuffix(c, ":")
+		switch {
+		case left && right:
+			aligns[i] = alignCenter
+		case right:
+			aligns[i] = alignRight
+		default:
+			aligns[i] = alignLeft
+		}
+	}
+	return aligns
+}
+
+// padCell pads a cell string to the given width according to alignment.
+func padCell(cell string, width int, align tableAlignment) string {
+	n := utf8.RuneCountInString(cell)
+	if n >= width {
+		return cell
+	}
+	gap := width - n
+	switch align {
+	case alignRight:
+		return strings.Repeat(" ", gap) + cell
+	case alignCenter:
+		left := gap / 2
+		right := gap - left
+		return strings.Repeat(" ", left) + cell + strings.Repeat(" ", right)
+	default:
+		return cell + strings.Repeat(" ", gap)
+	}
+}
+
+// formatTable takes a slice of raw markdown table lines and returns a
+// column-aligned plain-text table. Inline markdown in cells is stripped since
+// the output is rendered inside a code fence. The returned string does NOT
+// include the ``` wrapper.
+func formatTable(lines []string) string {
+	// Parse all rows, find the separator row (if any).
+	type parsedRow struct {
+		cells []string
+		isSep bool
+	}
+	rows := make([]parsedRow, len(lines))
+	sepIdx := -1
+	for i, line := range lines {
+		cells := splitTableRow(line)
+		isSep := isTableSeparator(line)
+		if isSep && sepIdx < 0 {
+			sepIdx = i
+		}
+		rows[i] = parsedRow{cells: cells, isSep: isSep}
+	}
+
+	// Determine column count from the maximum cell count across all rows.
+	numCols := 0
+	for _, r := range rows {
+		if len(r.cells) > numCols {
+			numCols = len(r.cells)
+		}
+	}
+	if numCols == 0 {
+		return strings.Join(lines, "\n")
+	}
+
+	// Extract alignments from separator row.
+	aligns := make([]tableAlignment, numCols)
+	if sepIdx >= 0 {
+		sepAligns := parseAlignments(rows[sepIdx].cells)
+		copy(aligns, sepAligns)
+	}
+
+	// Strip inline markdown from all non-separator cells and normalize column counts.
+	stripped := make([][]string, len(rows))
+	for i, r := range rows {
+		if r.isSep {
+			stripped[i] = nil
+			continue
+		}
+		cells := make([]string, numCols)
+		for j := 0; j < numCols; j++ {
+			if j < len(r.cells) {
+				cells[j] = stripInlineMarkdown(r.cells[j])
+			}
+		}
+		stripped[i] = cells
+	}
+
+	// Compute max column widths.
+	widths := make([]int, numCols)
+	for _, cells := range stripped {
+		if cells == nil {
+			continue
+		}
+		for j, c := range cells {
+			w := utf8.RuneCountInString(c)
+			if w > widths[j] {
+				widths[j] = w
+			}
+		}
+	}
+	// Ensure separator dashes are at least as wide as the column.
+	for j := range widths {
+		if widths[j] < 3 {
+			widths[j] = 3
+		}
+	}
+
+	// Build output rows, trimming trailing whitespace from each.
+	var outRows []string
+	for i, cells := range stripped {
+		var row strings.Builder
+		if rows[i].isSep {
+			for j := 0; j < numCols; j++ {
+				if j > 0 {
+					row.WriteString(" | ")
+				}
+				row.WriteString(strings.Repeat("-", widths[j]))
+			}
+			outRows = append(outRows, strings.TrimRight(row.String(), " "))
+			continue
+		}
+		if cells == nil {
+			continue
+		}
+		for j := 0; j < numCols; j++ {
+			if j > 0 {
+				row.WriteString(" | ")
+			}
+			row.WriteString(padCell(cells[j], widths[j], aligns[j]))
+		}
+		outRows = append(outRows, strings.TrimRight(row.String(), " "))
+	}
+	return strings.Join(outRows, "\n")
+}
+
 // Convert transforms standard Markdown into Slack's mrkdwn text format.
 //
 // It processes the input line-by-line, applying the following transformations
@@ -262,29 +471,66 @@ func Convert(input string) string {
 	builder.Grow(len(input))
 
 	inCodeBlock := false
+	needsNewline := false
+	var tableBuf []string
 
-	for i, line := range lines {
-		if i > 0 {
+	flushTable := func() {
+		if len(tableBuf) == 0 {
+			return
+		}
+		if needsNewline {
 			builder.WriteByte('\n')
 		}
+		builder.WriteString("```\n")
+		builder.WriteString(formatTable(tableBuf))
+		builder.WriteString("\n```")
+		needsNewline = true
+		tableBuf = nil
+	}
 
+	for _, line := range lines {
 		// Check for code fence (``` or ~~~)
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			flushTable()
+			if needsNewline {
+				builder.WriteByte('\n')
+			}
 			builder.WriteString("```")
 			inCodeBlock = !inCodeBlock
+			needsNewline = true
 			continue
 		}
 
 		if inCodeBlock {
 			// Pass through unchanged inside code blocks
+			if needsNewline {
+				builder.WriteByte('\n')
+			}
 			builder.WriteString(line)
+			needsNewline = true
 			continue
 		}
 
+		// Table line detection — buffer table rows.
+		if isTableLine(line) {
+			tableBuf = append(tableBuf, line)
+			continue
+		}
+
+		// Non-table line: flush any buffered table first.
+		flushTable()
+
+		if needsNewline {
+			builder.WriteByte('\n')
+		}
 		// Process inline content for non-code lines
 		builder.WriteString(processInlineLine(line))
+		needsNewline = true
 	}
+
+	// Flush remaining table at end of input.
+	flushTable()
 
 	return builder.String()
 }

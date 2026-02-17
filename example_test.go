@@ -27,6 +27,18 @@ func ExampleConvert_codeBlock() {
 	// ```
 }
 
+func ExampleConvert_table() {
+	markdown := "| Name | Age |\n|------|-----|\n| Alice | 30 |"
+	result := md2slack.Convert(markdown)
+	fmt.Print(result)
+	// Output:
+	// ```
+	// Name  | Age
+	// ----- | ---
+	// Alice | 30
+	// ```
+}
+
 func ExampleConvert_escaping() {
 	fmt.Println(md2slack.Convert("Tom & Jerry say 1 < 2 > 0"))
 	// Output:

@@ -558,6 +558,32 @@ func TestConvertToBlocks(t *testing.T) {
 			},
 		},
 
+		// Tables.
+		{
+			name:  "table becomes section code block",
+			input: "| Name | Age |\n|------|-----|\n| Alice | 30 |",
+			want: []Block{
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "```\nName  | Age\n----- | ---\nAlice | 30\n```"}},
+			},
+		},
+		{
+			name:  "table after heading",
+			input: "## Data\n\n| A | B |\n|---|---|\n| 1 | 2 |",
+			want: []Block{
+				{Type: "header", Text: &TextObject{Type: "plain_text", Text: "Data"}},
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "```\nA   | B\n--- | ---\n1   | 2\n```"}},
+			},
+		},
+		{
+			name:  "table between paragraphs",
+			input: "Before.\n\n| X |\n|---|\n| Y |\n\nAfter.",
+			want: []Block{
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "Before."}},
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "```\nX\n---\nY\n```"}},
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "After."}},
+			},
+		},
+
 		// Links with backticks in text.
 		{
 			name:  "list item with backtick link",
