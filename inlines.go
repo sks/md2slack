@@ -135,11 +135,12 @@ func (ctx *renderContext) handleLink(n *ast.Link, entering bool) {
 			ctx.headingHasUnsupported = true
 		}
 	} else {
-		if ctx.inHeading {
+		switch {
+		case ctx.inHeading:
 			// Link text already accumulated in headingBuf via handleText.
-		} else if ctx.inTable && ctx.tableState != nil {
+		case ctx.inTable && ctx.tableState != nil:
 			// Link text already written to cellBuf via handleText.
-		} else {
+		default:
 			ctx.addLink(ctx.linkURL, ctx.linkTextBuf)
 		}
 		ctx.inLink = false

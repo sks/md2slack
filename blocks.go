@@ -87,10 +87,11 @@ func (ctx *renderContext) handleParagraph(n *ast.Paragraph, entering bool) {
 				// Collect text from children.
 				var text string
 				for c := link.FirstChild(); c != nil; c = c.NextSibling() {
-					if t, ok := c.(*ast.Text); ok {
-						text += string(t.Value(ctx.source))
-					} else if cs, ok := c.(*ast.CodeSpan); ok {
-						for gc := cs.FirstChild(); gc != nil; gc = gc.NextSibling() {
+					switch v := c.(type) {
+					case *ast.Text:
+						text += string(v.Value(ctx.source))
+					case *ast.CodeSpan:
+						for gc := v.FirstChild(); gc != nil; gc = gc.NextSibling() {
 							if t, ok := gc.(*ast.Text); ok {
 								text += string(t.Value(ctx.source))
 							}

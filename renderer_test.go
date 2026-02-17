@@ -632,7 +632,7 @@ func FuzzConvert(f *testing.F) {
 }
 
 func containsStr(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && findStr(s, sub))
+	return len(s) >= len(sub) && (s == sub || s != "" && findStr(s, sub))
 }
 
 func findStr(s, sub string) bool {

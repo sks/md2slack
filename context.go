@@ -17,19 +17,14 @@ type renderContext struct {
 	currentStyle *slack.RichTextSectionTextStyle
 
 	// Heading state.
-	inHeading    bool
-	headingLevel int
-	headingBuf   string
+	inHeading             bool
+	headingLevel          int
+	headingBuf            string
 	headingHasUnsupported bool // links, images, etc.
 
 	// Blockquote state.
 	inBlockquote  bool
 	quoteElements []slack.RichTextSectionElement
-
-	// Code block state.
-	inCodeBlock bool
-	codeBuf     string
-	codeLang    string
 
 	// List state.
 	listStack []listFrame
@@ -39,10 +34,9 @@ type renderContext struct {
 	tableState *tableState
 
 	// Link state.
-	inLink        bool
-	linkURL       string
-	linkTextBuf   string // accumulates text for the link display text
-	savedInline   []slack.RichTextSectionElement // saved inline elements before link
+	inLink      bool
+	linkURL     string
+	linkTextBuf string // accumulates text for the link display text
 
 	// Image state.
 	inImage  bool
@@ -147,12 +141,4 @@ func (ctx *renderContext) emitBlock(b slack.Block) {
 // inList returns true if we are inside a list.
 func (ctx *renderContext) inList() bool {
 	return len(ctx.listStack) > 0
-}
-
-// currentListFrame returns a pointer to the current (innermost) list frame.
-func (ctx *renderContext) currentListFrame() *listFrame {
-	if len(ctx.listStack) == 0 {
-		return nil
-	}
-	return &ctx.listStack[len(ctx.listStack)-1]
 }

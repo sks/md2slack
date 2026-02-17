@@ -23,7 +23,6 @@ Single flat package `md2slack` with a custom goldmark AST walker that builds `[]
 - `blocks.go` — Block-level AST node handlers: `handleDocument`, `handleHeading` (smart HeaderBlock vs SectionBlock fallback for links or >150 chars), `handleParagraph` (standalone image → ImageBlock, standalone link → ActionBlock, normal → RichTextBlock), `handleBlockquote` (RichTextQuote), `handleFencedCodeBlock`/`handleCodeBlock` (RichTextPreformatted), `handleList`/`handleListItem` (RichTextList with nested indent), `handleThematicBreak` (DividerBlock).
 - `inlines.go` — Inline AST node handlers: `handleText` (text with style stack), `handleString`, `handleEmphasis` (level 1=italic, 2=bold), `handleCodeSpan` (Code style), `handleLink` (RichTextSectionLinkElement), `handleImage`, `handleAutoLink`, `handleStrikethrough` (Strike style), `handleTaskCheckBox` (checkbox emoji).
 - `table.go` — GFM table handlers: `handleTable`, `handleTableHeader`, `handleTableRow`, `handleTableCell`. Accumulates cell text in `tableState`, renders as code-fenced monospace SectionBlock with column alignment (`padCellAligned`). No native Slack TableBlock exists in slack-go.
-- `limits.go` — Micro-limit enforcement: `splitSectionText` (split text >3000 chars), `splitFields` (split >10 fields).
 - `doc.go` — Package-level godoc.
 - `cmd/example/main.go` — Example CLI that reads markdown from stdin/file, calls Convert and ChunkBlocks, prints JSON.
 
