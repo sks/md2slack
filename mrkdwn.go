@@ -119,13 +119,10 @@ func processInlineLine(line string) string {
 	return strings.Join(segments, "`")
 }
 
-// processHeadingLine handles a heading line by stripping bold markers from the
-// heading content, then processing the full content (respecting backtick-delimited
-// code segments) for links, strikethrough, and escaping, and wrapping in *...*.
-func processHeadingLine(headingContent, fullLine string) string {
-	content := strings.TrimSpace(headingContent)
-
-	// Strip bold markers and edge stars (redundant since heading is bold).
+// stripHeadingMarkers removes bold markers and nested heading prefixes from
+// heading content, returning plain text.
+func stripHeadingMarkers(content string) string {
+	content = strings.TrimSpace(content)
 	for {
 		prev := content
 		content = reConsecStars.ReplaceAllString(content, "")
@@ -133,7 +130,6 @@ func processHeadingLine(headingContent, fullLine string) string {
 		content = strings.TrimLeft(content, "*")
 		content = strings.TrimRight(content, "*")
 		content = strings.TrimSpace(content)
-		// Strip nested heading markers.
 		if inner := reHeading.FindStringSubmatch(content); inner != nil {
 			content = strings.TrimSpace(inner[1])
 		}
@@ -141,6 +137,14 @@ func processHeadingLine(headingContent, fullLine string) string {
 			break
 		}
 	}
+	return content
+}
+
+// processHeadingLine handles a heading line by stripping bold markers from the
+// heading content, then processing the full content (respecting backtick-delimited
+// code segments) for links, strikethrough, and escaping, and wrapping in *...*.
+func processHeadingLine(headingContent, fullLine string) string {
+	content := stripHeadingMarkers(headingContent)
 
 	if content == "" {
 		return ""

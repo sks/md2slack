@@ -3,19 +3,17 @@ package md2slack
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 )
 
 // Package-level compiled regexps for inline element parsing.
 var (
-	reInlineBold          = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	reInlineBoldUnder     = regexp.MustCompile(`__(.+?)__`)
-	reInlineItalic        = regexp.MustCompile(`(?:^|[\s(])_([^_]+?)_(?:$|[\s).,;:!?])`)
-	reInlineStrike        = regexp.MustCompile(`~~(.+?)~~`)
-	reInlineCode          = regexp.MustCompile("`([^`]+)`")
-	reInlineImageLink     = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
-	reInlineLink          = regexp.MustCompile(`\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
-	reQuoteImageSplitter  = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
+	reInlineBold      = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reInlineBoldUnder = regexp.MustCompile(`__(.+?)__`)
+	reInlineItalic    = regexp.MustCompile(`(?:^|[\s(])_([^_]+?)_(?:$|[\s).,;:!?])`)
+	reInlineStrike    = regexp.MustCompile(`~~(.+?)~~`)
+	reInlineCode      = regexp.MustCompile("`([^`]+)`")
 )
 
 // Block represents a single Slack Block Kit layout block.
@@ -549,7 +547,7 @@ func flushQuoteBuffer(blocks []Block, lines []string) []Block {
 	raw := strings.Join(lines, "\n")
 
 	// Check if the raw text contains any image references.
-	if !reQuoteImageSplitter.MatchString(raw) {
+	if !reImageLink.MatchString(raw) {
 		text := Convert(raw)
 		return append(blocks, Block{
 			Type: "context",
@@ -572,7 +570,7 @@ func flushQuoteBuffer(blocks []Block, lines []string) []Block {
 func splitQuoteWithImages(raw string) []TextObject {
 	var elements []TextObject
 
-	matches := reQuoteImageSplitter.FindAllStringSubmatchIndex(raw, -1)
+	matches := reImageLink.FindAllStringSubmatchIndex(raw, -1)
 	prev := 0
 	for _, loc := range matches {
 		// Text before this image.
@@ -628,26 +626,7 @@ func appendCodeBlock(blocks []Block, lines []string) []Block {
 // extractHeadingText strips # prefix and bold markers from a heading content
 // string, returning plain text suitable for a header block's plain_text field.
 func extractHeadingText(content string) string {
-	content = strings.TrimSpace(content)
-
-	// Strip bold markers (redundant in headers).
-	for {
-		prev := content
-		content = reConsecStars.ReplaceAllString(content, "")
-		content = reConsecUnders.ReplaceAllString(content, "")
-		content = strings.TrimLeft(content, "*")
-		content = strings.TrimRight(content, "*")
-		content = strings.TrimSpace(content)
-		// Strip nested heading markers.
-		if inner := reHeading.FindStringSubmatch(content); inner != nil {
-			content = strings.TrimSpace(inner[1])
-		}
-		if content == prev {
-			break
-		}
-	}
-
-	return content
+	return stripHeadingMarkers(content)
 }
 
 // parseInlineElements parses a markdown string into a slice of RichTextElement
@@ -680,7 +659,7 @@ func parseInlineElements(text string) []RichTextElement {
 	}
 
 	// Image links: ![alt](url) -- must come before regular links.
-	for _, loc := range reInlineImageLink.FindAllStringSubmatchIndex(text, -1) {
+	for _, loc := range reImageLink.FindAllStringSubmatchIndex(text, -1) {
 		spans = append(spans, span{
 			start: loc[0],
 			end:   loc[1],
@@ -693,7 +672,7 @@ func parseInlineElements(text string) []RichTextElement {
 	}
 
 	// Links: [text](url)
-	for _, loc := range reInlineLink.FindAllStringSubmatchIndex(text, -1) {
+	for _, loc := range reLink.FindAllStringSubmatchIndex(text, -1) {
 		// Skip if this overlaps with an image link (preceded by !).
 		if loc[0] > 0 && text[loc[0]-1] == '!' {
 			continue
@@ -833,15 +812,9 @@ type span struct {
 	elem       RichTextElement
 }
 
-// sortSpans sorts spans by start position using insertion sort (small slices).
+// sortSpans sorts spans by start position.
 func sortSpans(spans []span) {
-	for i := 1; i < len(spans); i++ {
-		key := spans[i]
-		j := i - 1
-		for j >= 0 && spans[j].start > key.start {
-			spans[j+1] = spans[j]
-			j--
-		}
-		spans[j+1] = key
-	}
+	slices.SortFunc(spans, func(a, b span) int {
+		return a.start - b.start
+	})
 }
