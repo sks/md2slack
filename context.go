@@ -1,6 +1,8 @@
 package md2slack
 
 import (
+	"strings"
+
 	"github.com/slack-go/slack"
 )
 
@@ -19,12 +21,12 @@ type renderContext struct {
 	// Heading state.
 	inHeading             bool
 	headingLevel          int
-	headingBuf            string
+	headingBuf            strings.Builder
+	headingMrkdwnBuf      strings.Builder
 	headingHasUnsupported bool // links, images, etc.
 
-	// Blockquote state.
-	inBlockquote  bool
-	quoteElements []slack.RichTextSectionElement
+	// Blockquote state (stack for nesting).
+	blockquoteStack []blockquoteFrame
 
 	// List state.
 	listStack []listFrame
@@ -43,6 +45,9 @@ type renderContext struct {
 	imageURL string
 	imageAlt string
 
+	// Action ID counter for unique block/action IDs.
+	actionCounter int
+
 	// Paragraph state — detect standalone images/links.
 	paragraphChildCount int
 	paragraphImageURL   string
@@ -58,6 +63,16 @@ type listFrame struct {
 	style  slack.RichTextListElementType // RTEListOrdered or RTEListBullet
 	items  []slack.RichTextElement       // accumulated RichTextSection items
 	indent int
+}
+
+// blockquoteFrame tracks one level of blockquote nesting.
+type blockquoteFrame struct {
+	elements []slack.RichTextSectionElement
+}
+
+// inBlockquote returns true if we are inside a blockquote.
+func (ctx *renderContext) inBlockquote() bool {
+	return len(ctx.blockquoteStack) > 0
 }
 
 // pushStyle pushes a new style onto the style stack and recomputes the effective style.

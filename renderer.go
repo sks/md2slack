@@ -2,6 +2,7 @@ package md2slack
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/slack-go/slack"
 	"github.com/yuin/goldmark"
@@ -10,6 +11,20 @@ import (
 	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 )
+
+var (
+	parserOnce sync.Once
+	parserInst goldmark.Markdown
+)
+
+func getParser() goldmark.Markdown {
+	parserOnce.Do(func() {
+		parserInst = goldmark.New(
+			goldmark.WithExtensions(extension.GFM),
+		)
+	})
+	return parserInst
+}
 
 // Convert parses a Markdown string and returns Slack Block Kit blocks.
 //
@@ -43,10 +58,7 @@ func Convert(markdown string) ([]slack.Block, error) {
 
 	source := []byte(markdown)
 
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-	)
-
+	md := getParser()
 	doc := md.Parser().Parse(text.NewReader(source))
 
 	ctx := &renderContext{

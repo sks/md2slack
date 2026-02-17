@@ -2,6 +2,7 @@ package md2slack
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/slack-go/slack"
@@ -233,7 +234,7 @@ func TestConvert_Basic(t *testing.T) {
 					t.Errorf("expected mrkdwn, got %q", sec.Text.Type)
 				}
 				// Should contain code fence.
-				if !containsStr(sec.Text.Text, "```") {
+				if !strings.Contains(sec.Text.Text, "```") {
 					t.Errorf("expected code fence in table text, got: %q", sec.Text.Text)
 				}
 			},
@@ -486,13 +487,13 @@ func TestConvert_Table(t *testing.T) {
 		t.Fatalf("expected SectionBlock, got %T", blocks[0])
 	}
 	text := sec.Text.Text
-	if !containsStr(text, "```") {
+	if !strings.Contains(text, "```") {
 		t.Errorf("expected code fence, got: %q", text)
 	}
-	if !containsStr(text, "Name") {
+	if !strings.Contains(text, "Name") {
 		t.Errorf("expected 'Name' in table, got: %q", text)
 	}
-	if !containsStr(text, "Alice") {
+	if !strings.Contains(text, "Alice") {
 		t.Errorf("expected 'Alice' in table, got: %q", text)
 	}
 }
@@ -509,7 +510,7 @@ func TestConvert_TableAlignment(t *testing.T) {
 	sec := blocks[0].(*slack.SectionBlock)
 	text := sec.Text.Text
 	// Right-aligned "100" should have leading spaces.
-	if !containsStr(text, "100") {
+	if !strings.Contains(text, "100") {
 		t.Errorf("expected '100' in table, got: %q", text)
 	}
 }
@@ -573,8 +574,8 @@ func TestConvert_HeadingWithLink(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected SectionBlock (fallback for heading with link), got %T", blocks[0])
 	}
-	if sec.Text.Text != "*Click here*" {
-		t.Errorf("expected bold mrkdwn fallback, got %q", sec.Text.Text)
+	if sec.Text.Text != "*Click <https://example.com|here>*" {
+		t.Errorf("expected bold mrkdwn fallback with link, got %q", sec.Text.Text)
 	}
 }
 
@@ -601,11 +602,331 @@ func TestConvert_TaskCheckbox(t *testing.T) {
 	// Should contain checkbox emojis.
 	data, _ := json.Marshal(blocks)
 	text := string(data)
-	if !containsStr(text, "☑") {
+	if !strings.Contains(text, "☑") {
 		t.Error("expected checked checkbox emoji")
 	}
-	if !containsStr(text, "☐") {
+	if !strings.Contains(text, "☐") {
 		t.Error("expected unchecked checkbox emoji")
+	}
+}
+
+func TestConvert_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		check func(t *testing.T, blocks []slack.Block)
+	}{
+		{
+			name:  "autolink URL",
+			input: "<https://example.com>",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				sec := rt.Elements[0].(*slack.RichTextSection)
+				found := false
+				for _, elem := range sec.Elements {
+					if link, ok := elem.(*slack.RichTextSectionLinkElement); ok {
+						if link.URL == "https://example.com" {
+							found = true
+						}
+					}
+				}
+				if !found {
+					t.Errorf("expected link element with URL, got: %s", blockJSON(t, blocks))
+				}
+			},
+		},
+		{
+			name:  "autolink email",
+			input: "<user@example.com>",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				sec := rt.Elements[0].(*slack.RichTextSection)
+				found := false
+				for _, elem := range sec.Elements {
+					if link, ok := elem.(*slack.RichTextSectionLinkElement); ok {
+						if link.URL == "mailto:user@example.com" {
+							found = true
+						}
+					}
+				}
+				if !found {
+					t.Errorf("expected mailto link element, got: %s", blockJSON(t, blocks))
+				}
+			},
+		},
+		{
+			name:  "indented code block",
+			input: "    code line 1\n    code line 2",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				_, ok := rt.Elements[0].(*slack.RichTextPreformatted)
+				if !ok {
+					t.Fatalf("expected RichTextPreformatted, got %T", rt.Elements[0])
+				}
+			},
+		},
+		{
+			name:  "heading over 150 chars falls back to section",
+			input: "## " + strings.Repeat("A", 160),
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				sec, ok := blocks[0].(*slack.SectionBlock)
+				if !ok {
+					t.Fatalf("expected SectionBlock fallback, got %T", blocks[0])
+				}
+				if sec.Text.Type != slack.MarkdownType {
+					t.Errorf("expected mrkdwn type, got %q", sec.Text.Type)
+				}
+				if !strings.HasPrefix(sec.Text.Text, "*") {
+					t.Errorf("expected bold mrkdwn wrapper, got %q", sec.Text.Text[:10])
+				}
+			},
+		},
+		{
+			name:  "heading with image falls back to section",
+			input: "## Title ![img](https://example.com/img.png)",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				_, ok := blocks[0].(*slack.SectionBlock)
+				if !ok {
+					t.Fatalf("expected SectionBlock fallback for heading with image, got %T", blocks[0])
+				}
+			},
+		},
+		{
+			name:  "heading link preserves URL in mrkdwn",
+			input: "## Visit [Google](https://google.com) today",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				sec := blocks[0].(*slack.SectionBlock)
+				if !strings.Contains(sec.Text.Text, "https://google.com") {
+					t.Errorf("expected URL preserved in mrkdwn, got %q", sec.Text.Text)
+				}
+				if !strings.Contains(sec.Text.Text, "<https://google.com|Google>") {
+					t.Errorf("expected mrkdwn link syntax, got %q", sec.Text.Text)
+				}
+			},
+		},
+		{
+			name:  "nested blockquotes flatten into single quote",
+			input: "> outer\n> > inner",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				_, ok := rt.Elements[0].(*slack.RichTextQuote)
+				if !ok {
+					t.Fatalf("expected RichTextQuote, got %T", rt.Elements[0])
+				}
+			},
+		},
+		{
+			name:  "multi-paragraph blockquote",
+			input: "> First paragraph.\n>\n> Second paragraph.",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				quote, ok := rt.Elements[0].(*slack.RichTextQuote)
+				if !ok {
+					t.Fatalf("expected RichTextQuote, got %T", rt.Elements[0])
+				}
+				// Should have elements from both paragraphs with separator.
+				if len(quote.Elements) < 3 {
+					t.Errorf("expected at least 3 elements (two paragraphs + separator), got %d", len(quote.Elements))
+				}
+			},
+		},
+		{
+			name:  "mixed list types ordered inside unordered",
+			input: "- Fruit\n  1. Apple\n  2. Banana\n- Veggies",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				list, ok := rt.Elements[0].(*slack.RichTextList)
+				if !ok {
+					t.Fatalf("expected RichTextList, got %T", rt.Elements[0])
+				}
+				if list.Style != slack.RTEListBullet {
+					t.Errorf("expected outer bullet list, got %q", list.Style)
+				}
+				// Should have nested ordered list among elements.
+				hasNested := false
+				for _, elem := range list.Elements {
+					if nested, ok := elem.(*slack.RichTextList); ok {
+						if nested.Style == slack.RTEListOrdered {
+							hasNested = true
+						}
+					}
+				}
+				if !hasNested {
+					t.Error("expected nested ordered list inside bullet list")
+				}
+			},
+		},
+		{
+			name:  "soft line break becomes newline",
+			input: "line one\nline two",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				data, _ := json.Marshal(blocks)
+				if !strings.Contains(string(data), "\\n") {
+					t.Errorf("expected newline in output, got: %s", string(data))
+				}
+			},
+		},
+		{
+			name:  "hard line break",
+			input: "line one  \nline two",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				data, _ := json.Marshal(blocks)
+				if !strings.Contains(string(data), "\\n") {
+					t.Errorf("expected newline in output, got: %s", string(data))
+				}
+			},
+		},
+		{
+			name:  "whitespace-only input returns nil",
+			input: "   \n\t\n   ",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if blocks != nil {
+					t.Errorf("expected nil for whitespace-only input, got %d blocks", len(blocks))
+				}
+			},
+		},
+		{
+			name:  "standalone image with empty alt text",
+			input: "![](https://example.com/img.png)",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				img, ok := blocks[0].(*slack.ImageBlock)
+				if !ok {
+					t.Fatalf("expected ImageBlock, got %T", blocks[0])
+				}
+				// Empty alt should be replaced with space for Slack API.
+				if img.AltText != " " {
+					t.Errorf("expected alt text %q for empty alt, got %q", " ", img.AltText)
+				}
+			},
+		},
+		{
+			name:  "inline image becomes link fallback",
+			input: "See ![logo](https://example.com/logo.png) here",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				rt := blocks[0].(*slack.RichTextBlock)
+				sec := rt.Elements[0].(*slack.RichTextSection)
+				found := false
+				for _, elem := range sec.Elements {
+					if link, ok := elem.(*slack.RichTextSectionLinkElement); ok {
+						if link.URL == "https://example.com/logo.png" && link.Text == "logo" {
+							found = true
+						}
+					}
+				}
+				if !found {
+					t.Errorf("expected inline image to fall back to link, got: %s", blockJSON(t, blocks))
+				}
+			},
+		},
+		{
+			name:  "code block JSON serializes as rich_text_preformatted",
+			input: "```\nhello\n```",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				data, _ := json.Marshal(blocks)
+				jsonStr := string(data)
+				if !strings.Contains(jsonStr, "rich_text_preformatted") {
+					t.Errorf("expected 'rich_text_preformatted' in JSON, got: %s", jsonStr)
+				}
+			},
+		},
+		{
+			name:  "heading with code span",
+			input: "## Use `fmt.Println`",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				h, ok := blocks[0].(*slack.HeaderBlock)
+				if !ok {
+					t.Fatalf("expected HeaderBlock, got %T", blocks[0])
+				}
+				if !strings.Contains(h.Text.Text, "fmt.Println") {
+					t.Errorf("expected code span text in heading, got %q", h.Text.Text)
+				}
+			},
+		},
+		{
+			name:  "heading with autolink falls back to section with mrkdwn link",
+			input: "## See <https://example.com>",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 1 {
+					t.Fatalf("expected 1 block, got %d", len(blocks))
+				}
+				sec, ok := blocks[0].(*slack.SectionBlock)
+				if !ok {
+					t.Fatalf("expected SectionBlock fallback, got %T", blocks[0])
+				}
+				if !strings.Contains(sec.Text.Text, "<https://example.com|") {
+					t.Errorf("expected mrkdwn link in heading fallback, got %q", sec.Text.Text)
+				}
+			},
+		},
+		{
+			name:  "action block has unique IDs",
+			input: "[Link A](https://a.com)\n\n[Link B](https://b.com)",
+			check: func(t *testing.T, blocks []slack.Block) {
+				if len(blocks) != 2 {
+					t.Fatalf("expected 2 blocks, got %d: %s", len(blocks), blockJSON(t, blocks))
+				}
+				a := blocks[0].(*slack.ActionBlock)
+				b := blocks[1].(*slack.ActionBlock)
+				if a.BlockID == b.BlockID {
+					t.Errorf("expected unique block IDs, both are %q", a.BlockID)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blocks, err := Convert(tt.input)
+			if err != nil {
+				t.Fatalf("Convert error: %v", err)
+			}
+			tt.check(t, blocks)
+		})
 	}
 }
 
@@ -629,17 +950,4 @@ func FuzzConvert(f *testing.F) {
 			t.Errorf("Convert panicked or errored on %q: %v", input, err)
 		}
 	})
-}
-
-func containsStr(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || s != "" && findStr(s, sub))
-}
-
-func findStr(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }

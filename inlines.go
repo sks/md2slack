@@ -1,6 +1,8 @@
 package md2slack
 
 import (
+	"strings"
+
 	"github.com/slack-go/slack"
 	"github.com/yuin/goldmark/ast"
 	east "github.com/yuin/goldmark/extension/ast"
@@ -14,9 +16,16 @@ func (ctx *renderContext) handleText(n *ast.Text, entering bool) {
 	text := string(n.Value(ctx.source))
 
 	if ctx.inHeading {
-		ctx.headingBuf += text
+		ctx.headingBuf.WriteString(text)
+		if ctx.inLink {
+			// Accumulate for link display text; mrkdwn written by handleLink leaving.
+			ctx.linkTextBuf += text
+		} else {
+			ctx.headingMrkdwnBuf.WriteString(strings.ReplaceAll(text, "*", `\*`))
+		}
 		if n.SoftLineBreak() {
-			ctx.headingBuf += " "
+			ctx.headingBuf.WriteString(" ")
+			ctx.headingMrkdwnBuf.WriteString(" ")
 		}
 		return
 	}
@@ -50,7 +59,12 @@ func (ctx *renderContext) handleString(n *ast.String, entering bool) {
 	}
 	text := string(n.Value)
 	if ctx.inHeading {
-		ctx.headingBuf += text
+		ctx.headingBuf.WriteString(text)
+		if ctx.inLink {
+			ctx.linkTextBuf += text
+		} else {
+			ctx.headingMrkdwnBuf.WriteString(strings.ReplaceAll(text, "*", `\*`))
+		}
 		return
 	}
 	if ctx.inTable && ctx.tableState != nil {
@@ -101,7 +115,10 @@ func (ctx *renderContext) handleCodeSpan(n *ast.CodeSpan, entering bool) {
 	}
 
 	if ctx.inHeading {
-		ctx.headingBuf += text
+		ctx.headingBuf.WriteString(text)
+		ctx.headingMrkdwnBuf.WriteString("`")
+		ctx.headingMrkdwnBuf.WriteString(text)
+		ctx.headingMrkdwnBuf.WriteString("`")
 		return
 	}
 
@@ -138,6 +155,12 @@ func (ctx *renderContext) handleLink(n *ast.Link, entering bool) {
 		switch {
 		case ctx.inHeading:
 			// Link text already accumulated in headingBuf via handleText.
+			// Write mrkdwn link syntax for fallback rendering.
+			ctx.headingMrkdwnBuf.WriteString("<")
+			ctx.headingMrkdwnBuf.WriteString(ctx.linkURL)
+			ctx.headingMrkdwnBuf.WriteString("|")
+			ctx.headingMrkdwnBuf.WriteString(ctx.linkTextBuf)
+			ctx.headingMrkdwnBuf.WriteString(">")
 		case ctx.inTable && ctx.tableState != nil:
 			// Link text already written to cellBuf via handleText.
 		default:
@@ -165,12 +188,21 @@ func (ctx *renderContext) handleImage(n *ast.Image, entering bool) {
 
 		if ctx.inHeading {
 			ctx.headingHasUnsupported = true
-			ctx.headingBuf += ctx.imageAlt
+			ctx.headingBuf.WriteString(ctx.imageAlt)
+			ctx.headingMrkdwnBuf.WriteString(ctx.imageAlt)
 		}
 
 		// In tables, write alt text to cell buffer.
 		if ctx.inTable && ctx.tableState != nil {
 			ctx.tableState.cellBuf.WriteString(alt)
+		}
+		// Inline image (not standalone, not heading, not table): fall back to link.
+		if !ctx.inHeading && !(ctx.inTable && ctx.tableState != nil) && !ctx.isStandaloneImage {
+			label := ctx.imageAlt
+			if label == "" {
+				label = ctx.imageURL
+			}
+			ctx.addLink(ctx.imageURL, label)
 		}
 	} else {
 		ctx.inImage = false
@@ -192,7 +224,12 @@ func (ctx *renderContext) handleAutoLink(n *ast.AutoLink, entering bool) {
 
 	if ctx.inHeading {
 		ctx.headingHasUnsupported = true
-		ctx.headingBuf += label
+		ctx.headingBuf.WriteString(label)
+		ctx.headingMrkdwnBuf.WriteString("<")
+		ctx.headingMrkdwnBuf.WriteString(url)
+		ctx.headingMrkdwnBuf.WriteString("|")
+		ctx.headingMrkdwnBuf.WriteString(label)
+		ctx.headingMrkdwnBuf.WriteString(">")
 		return
 	}
 

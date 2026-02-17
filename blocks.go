@@ -1,6 +1,7 @@
 package md2slack
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -19,12 +20,13 @@ func (ctx *renderContext) handleHeading(n *ast.Heading, entering bool) {
 	if entering {
 		ctx.inHeading = true
 		ctx.headingLevel = n.Level
-		ctx.headingBuf = ""
+		ctx.headingBuf.Reset()
+		ctx.headingMrkdwnBuf.Reset()
 		ctx.headingHasUnsupported = false
 		ctx.inlineElements = nil
 	} else {
 		ctx.inHeading = false
-		text := strings.TrimSpace(ctx.headingBuf)
+		text := strings.TrimSpace(ctx.headingBuf.String())
 
 		// Slack header blocks: plain_text only, max 150 chars, no links/images.
 		if !ctx.headingHasUnsupported && utf8.RuneCountInString(text) <= 150 {
@@ -32,14 +34,15 @@ func (ctx *renderContext) handleHeading(n *ast.Heading, entering bool) {
 				slack.NewTextBlockObject(slack.PlainTextType, text, false, false),
 			))
 		} else {
-			// Fallback: section block with bold mrkdwn.
-			mrkdwn := "*" + text + "*"
+			// Fallback: section block with bold mrkdwn that preserves links.
+			mrkdwn := "*" + strings.TrimSpace(ctx.headingMrkdwnBuf.String()) + "*"
 			ctx.emitBlock(slack.NewSectionBlock(
 				slack.NewTextBlockObject(slack.MarkdownType, mrkdwn, false, false),
 				nil, nil,
 			))
 		}
-		ctx.headingBuf = ""
+		ctx.headingBuf.Reset()
+		ctx.headingMrkdwnBuf.Reset()
 		ctx.inlineElements = nil
 	}
 }
@@ -123,12 +126,15 @@ func (ctx *renderContext) handleParagraph(n *ast.Paragraph, entering bool) {
 
 		// Standalone link → ActionBlock with button.
 		if ctx.isStandaloneLink {
+			actionID := fmt.Sprintf("md2slack-link-%d", ctx.actionCounter)
+			blockID := fmt.Sprintf("md2slack-action-%d", ctx.actionCounter)
+			ctx.actionCounter++
 			btn := slack.NewButtonBlockElement(
-				"", ctx.paragraphLinkURL,
+				actionID, ctx.paragraphLinkURL,
 				slack.NewTextBlockObject(slack.PlainTextType, ctx.paragraphLinkText, false, false),
 			)
 			btn.URL = ctx.paragraphLinkURL
-			ctx.emitBlock(slack.NewActionBlock("", btn))
+			ctx.emitBlock(slack.NewActionBlock(blockID, btn))
 			ctx.inlineElements = nil
 			return
 		}
@@ -139,13 +145,14 @@ func (ctx *renderContext) handleParagraph(n *ast.Paragraph, entering bool) {
 		}
 
 		// Inside a blockquote → accumulate, let the blockquote handler deal with it.
-		if ctx.inBlockquote {
-			if len(ctx.quoteElements) > 0 {
+		if ctx.inBlockquote() {
+			frame := &ctx.blockquoteStack[len(ctx.blockquoteStack)-1]
+			if len(frame.elements) > 0 {
 				// Add a newline separator between blockquote paragraphs.
-				ctx.quoteElements = append(ctx.quoteElements,
+				frame.elements = append(frame.elements,
 					slack.NewRichTextSectionTextElement("\n", nil))
 			}
-			ctx.quoteElements = append(ctx.quoteElements, ctx.inlineElements...)
+			frame.elements = append(frame.elements, ctx.inlineElements...)
 			ctx.inlineElements = nil
 			return
 		}
@@ -162,18 +169,35 @@ func (ctx *renderContext) handleParagraph(n *ast.Paragraph, entering bool) {
 // handleBlockquote processes an ast.Blockquote node.
 func (ctx *renderContext) handleBlockquote(_ *ast.Blockquote, entering bool) {
 	if entering {
-		ctx.inBlockquote = true
-		ctx.quoteElements = nil
+		ctx.blockquoteStack = append(ctx.blockquoteStack, blockquoteFrame{})
 	} else {
-		ctx.inBlockquote = false
-		if len(ctx.quoteElements) > 0 {
-			quote := &slack.RichTextQuote{
-				Type:     slack.RTEQuote,
-				Elements: ctx.quoteElements,
-			}
-			ctx.emitBlock(slack.NewRichTextBlock("", quote))
+		if len(ctx.blockquoteStack) == 0 {
+			return
 		}
-		ctx.quoteElements = nil
+		frame := ctx.blockquoteStack[len(ctx.blockquoteStack)-1]
+		ctx.blockquoteStack = ctx.blockquoteStack[:len(ctx.blockquoteStack)-1]
+
+		if len(frame.elements) == 0 {
+			return
+		}
+
+		// Nested blockquote: flatten into parent (Slack has no nested quote support).
+		if len(ctx.blockquoteStack) > 0 {
+			parent := &ctx.blockquoteStack[len(ctx.blockquoteStack)-1]
+			if len(parent.elements) > 0 {
+				parent.elements = append(parent.elements,
+					slack.NewRichTextSectionTextElement("\n", nil))
+			}
+			parent.elements = append(parent.elements, frame.elements...)
+			return
+		}
+
+		// Top-level blockquote: emit as RichTextBlock with RichTextQuote.
+		quote := &slack.RichTextQuote{
+			Type:     slack.RTEQuote,
+			Elements: frame.elements,
+		}
+		ctx.emitBlock(slack.NewRichTextBlock("", quote))
 	}
 }
 
@@ -197,7 +221,7 @@ func (ctx *renderContext) handleFencedCodeBlock(n *ast.FencedCodeBlock, entering
 
 	pre := &slack.RichTextPreformatted{
 		RichTextSection: slack.RichTextSection{
-			Type: slack.RTESection,
+			Type: slack.RTEPreformatted,
 			Elements: []slack.RichTextSectionElement{
 				slack.NewRichTextSectionTextElement(text, nil),
 			},
@@ -223,7 +247,7 @@ func (ctx *renderContext) handleCodeBlock(n *ast.CodeBlock, entering bool) {
 
 	pre := &slack.RichTextPreformatted{
 		RichTextSection: slack.RichTextSection{
-			Type: slack.RTESection,
+			Type: slack.RTEPreformatted,
 			Elements: []slack.RichTextSectionElement{
 				slack.NewRichTextSectionTextElement(text, nil),
 			},
