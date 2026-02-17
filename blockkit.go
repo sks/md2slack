@@ -118,9 +118,7 @@ func ConvertToBlocks(markdown string) []Block {
 			} else {
 				idx := strings.Index(line, ">")
 				content = line[idx+1:]
-				if strings.HasPrefix(content, " ") {
-					content = content[1:]
-				}
+				content = strings.TrimPrefix(content, " ")
 			}
 			quoteBuf = append(quoteBuf, content)
 			continue
@@ -141,7 +139,7 @@ func ConvertToBlocks(markdown string) []Block {
 		}
 
 		// Heading → header block with plain_text.
-		if m := reHeading.FindStringSubmatch(trimmed); m != nil && strings.TrimSpace(m[1]) != "" {
+		if m := reHeading.FindStringSubmatch(trimmed); len(m) > 1 && strings.TrimSpace(m[1]) != "" {
 			blocks = flushTextBuffer(blocks, textBuf)
 			textBuf = nil
 			blocks = append(blocks, Block{
@@ -155,7 +153,7 @@ func ConvertToBlocks(markdown string) []Block {
 		}
 
 		// Standalone image → image block.
-		if m := reStandaloneImage.FindStringSubmatch(line); m != nil && m[2] != "" {
+		if m := reStandaloneImage.FindStringSubmatch(line); len(m) > 2 && m[2] != "" {
 			blocks = flushTextBuffer(blocks, textBuf)
 			textBuf = nil
 			alt := m[1]

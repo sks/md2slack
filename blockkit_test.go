@@ -8,9 +8,9 @@ import (
 
 func TestConvertToBlocks(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
-		want []Block
+		want  []Block
 	}{
 		{
 			name:  "empty input",

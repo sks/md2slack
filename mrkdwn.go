@@ -7,16 +7,16 @@ import (
 
 // Package-level compiled regexps for inline transforms.
 var (
-	reHeading       = regexp.MustCompile(`^#{1,6}\s+(.+)`)
-	reBoldAsterisks = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	reBoldUnders    = regexp.MustCompile(`__(.+?)__`)
-	reImageLink     = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
-	reLink          = regexp.MustCompile(`\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
-	reStrikethrough = regexp.MustCompile(`~~(.+?)~~`)
-	reNumberedList   = regexp.MustCompile(`^(\s*)\d+[.)]\s+`)
-	reUnorderedList  = regexp.MustCompile(`^(\s*)[*+]\s+`)
-	reSlackLink     = regexp.MustCompile(`<[^\s<>][^<>]*>`)
-	reEntity        = regexp.MustCompile(`^&(amp|lt|gt);`)
+	reHeading         = regexp.MustCompile(`^#{1,6}\s+(.+)`)
+	reBoldAsterisks   = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reBoldUnders      = regexp.MustCompile(`__(.+?)__`)
+	reImageLink       = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
+	reLink            = regexp.MustCompile(`\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
+	reStrikethrough   = regexp.MustCompile(`~~(.+?)~~`)
+	reNumberedList    = regexp.MustCompile(`^(\s*)\d+[.)]\s+`)
+	reUnorderedList   = regexp.MustCompile(`^(\s*)[*+]\s+`)
+	reSlackLink       = regexp.MustCompile(`<[^\s<>][^<>]*>`)
+	reEntity          = regexp.MustCompile(`^&(amp|lt|gt);`)
 	reConsecStars     = regexp.MustCompile(`\*{2,}`)
 	reConsecUnders    = regexp.MustCompile(`_{2,}`)
 	reHorizontalRule  = regexp.MustCompile(`^\s*(?:-[\s]*-[\s]*-[-\s]*|_[\s]*_[\s]*_[_\s]*|\*[\s]*\*[\s]*\*[*\s]*)$`)
@@ -99,7 +99,7 @@ func Convert(input string) string {
 func processInlineLine(line string) string {
 	// Headings are line-level — detect on the escaped full line.
 	escaped := escapeSlackChars(line, line)
-	if m := reHeading.FindStringSubmatch(escaped); m != nil && strings.TrimSpace(m[1]) != "" {
+	if m := reHeading.FindStringSubmatch(escaped); len(m) > 1 && strings.TrimSpace(m[1]) != "" {
 		return processHeadingLine(m[1], line)
 	}
 
@@ -119,7 +119,7 @@ func processInlineLine(line string) string {
 // processHeadingLine handles a heading line by stripping bold markers from the
 // heading content, then processing the full content (respecting backtick-delimited
 // code segments) for links, strikethrough, and escaping, and wrapping in *...*.
-func processHeadingLine(headingContent string, fullLine string) string {
+func processHeadingLine(headingContent, fullLine string) string {
 	content := strings.TrimSpace(headingContent)
 
 	// Strip bold markers and edge stars (redundant since heading is bold).
@@ -168,7 +168,7 @@ func processHeadingLine(headingContent string, fullLine string) string {
 // applyHeadingSegmentTransforms applies non-bold inline transforms to a heading
 // text segment (escaping, links, strikethrough). Bold is already handled by
 // the heading wrapper.
-func applyHeadingSegmentTransforms(seg string, fullLine string) string {
+func applyHeadingSegmentTransforms(seg, fullLine string) string {
 	seg = escapeSlackChars(seg, fullLine)
 	seg = replaceOutsideSlackLinks(seg, reImageLink, convertImageLink)
 	seg = replaceOutsideSlackLinks(seg, reLink, convertLink)
@@ -179,7 +179,7 @@ func applyHeadingSegmentTransforms(seg string, fullLine string) string {
 // applyInlineTransforms applies all inline markdown-to-Slack conversions
 // to a text segment that is NOT inside inline code.
 // fullLine is the original complete line (used for context like block quotes).
-func applyInlineTransforms(seg string, fullLine string) string {
+func applyInlineTransforms(seg, fullLine string) string {
 	// 1. Escape reserved Slack characters (must happen first, before inserting <url|text>)
 	//    Skip leading > for block quote lines.
 	seg = escapeSlackChars(seg, fullLine)
@@ -223,7 +223,7 @@ func applyInlineTransforms(seg string, fullLine string) string {
 // markers (**text** or __text__) into single-delimiter format (*text*), but only
 // when it won't create ambiguous sequences at the match boundaries.
 // wrap is the output delimiter (e.g. "*"), skip is the source delimiter (e.g. "*" or "_").
-func replaceWithContext(s string, re *regexp.Regexp, wrap string, skip string) string {
+func replaceWithContext(s string, re *regexp.Regexp, wrap, skip string) string {
 	matches := re.FindAllStringSubmatchIndex(s, -1)
 	if len(matches) == 0 {
 		return s
@@ -253,7 +253,7 @@ func replaceWithContext(s string, re *regexp.Regexp, wrap string, skip string) s
 		// Check what character precedes this replacement in the output.
 		gap := s[prev:start]
 		var charBefore byte
-		if len(gap) > 0 {
+		if gap != "" {
 			charBefore = gap[len(gap)-1]
 		} else {
 			charBefore = lastWrote
@@ -327,7 +327,7 @@ func convertLink(match string) string {
 // replaceWithContextOutsideSlackLinks combines replaceWithContext and
 // replaceOutsideSlackLinks: applies context-aware replacement only to portions
 // of the string that are not inside Slack-format links (<...>).
-func replaceWithContextOutsideSlackLinks(s string, re *regexp.Regexp, wrap string, skip string) string {
+func replaceWithContextOutsideSlackLinks(s string, re *regexp.Regexp, wrap, skip string) string {
 	slackLinks := reSlackLink.FindAllStringIndex(s, -1)
 	if len(slackLinks) == 0 {
 		return replaceWithContext(s, re, wrap, skip)
@@ -373,7 +373,7 @@ func replaceOutsideSlackLinks(s string, re *regexp.Regexp, repl func(string) str
 // escapeSlackChars escapes &, <, > for Slack while preserving already-escaped
 // entities (&amp; &lt; &gt;) and Slack-format links (<url|text>).
 // For block-quote lines (starting with "> "), the leading > is preserved.
-func escapeSlackChars(seg string, fullLine string) string {
+func escapeSlackChars(seg, fullLine string) string {
 	isBlockQuote := strings.HasPrefix(strings.TrimSpace(fullLine), "> ")
 
 	// Escape & but skip already-escaped entities (&amp; &lt; &gt;).
