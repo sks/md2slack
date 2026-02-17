@@ -1,46 +1,120 @@
 package md2slack
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestConvertToBlocks(t *testing.T) {
-	input := "## Hello\n\nThis is **bold** and a [link](https://example.com)."
+	tests := []struct {
+		name      string
+		input     string
+		wantType  string
+		wantTType string
+		wantText  string
+	}{
+		{
+			name:      "markdown with heading bold and link",
+			input:     "## Hello\n\nThis is **bold** and a [link](https://example.com).",
+			wantType:  "section",
+			wantTType: "mrkdwn",
+			wantText:  "*Hello*\n\nThis is *bold* and a <https://example.com|link>.",
+		},
+		{
+			name:      "empty input",
+			input:     "",
+			wantType:  "section",
+			wantTType: "mrkdwn",
+			wantText:  "",
+		},
+		{
+			name:      "plain text",
+			input:     "just plain text",
+			wantType:  "section",
+			wantTType: "mrkdwn",
+			wantText:  "just plain text",
+		},
+		{
+			name:      "text with entities",
+			input:     "Tom & Jerry",
+			wantType:  "section",
+			wantTType: "mrkdwn",
+			wantText:  "Tom &amp; Jerry",
+		},
+	}
 
-	blocks := ConvertToBlocks(input)
-
-	if blocks == nil {
-		t.Fatal("ConvertToBlocks returned nil")
-	}
-	if len(blocks) != 1 {
-		t.Fatalf("expected 1 block, got %d", len(blocks))
-	}
-
-	block := blocks[0]
-	if block.Type != "section" {
-		t.Errorf("expected block type %q, got %q", "section", block.Type)
-	}
-	if block.Text == nil {
-		t.Fatal("expected block.Text to be non-nil")
-	}
-	if block.Text.Type != "mrkdwn" {
-		t.Errorf("expected text type %q, got %q", "mrkdwn", block.Text.Type)
-	}
-
-	expected := Convert(input)
-	if block.Text.Text != expected {
-		t.Errorf("block text does not match Convert output\n  got:  %q\n  want: %q", block.Text.Text, expected)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blocks := ConvertToBlocks(tt.input)
+			if blocks == nil {
+				t.Fatal("ConvertToBlocks returned nil")
+			}
+			if len(blocks) != 1 {
+				t.Fatalf("expected 1 block, got %d", len(blocks))
+			}
+			block := blocks[0]
+			if block.Type != tt.wantType {
+				t.Errorf("block type = %q, want %q", block.Type, tt.wantType)
+			}
+			if block.Text == nil {
+				t.Fatal("block.Text is nil")
+			}
+			if block.Text.Type != tt.wantTType {
+				t.Errorf("text type = %q, want %q", block.Text.Type, tt.wantTType)
+			}
+			if block.Text.Text != tt.wantText {
+				t.Errorf("text = %q, want %q", block.Text.Text, tt.wantText)
+			}
+		})
 	}
 }
 
-func TestConvertToBlocks_Empty(t *testing.T) {
-	blocks := ConvertToBlocks("")
+func TestBlock_JSONRoundTrip(t *testing.T) {
+	original := []Block{
+		{
+			Type: "section",
+			Text: &TextObject{
+				Type: "mrkdwn",
+				Text: "Hello *world*",
+			},
+		},
+	}
 
-	if blocks == nil {
-		t.Fatal("ConvertToBlocks returned nil for empty input")
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
 	}
-	if len(blocks) != 1 {
-		t.Fatalf("expected 1 block, got %d", len(blocks))
+
+	var decoded []Block
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
 	}
-	if blocks[0].Text.Text != "" {
-		t.Errorf("expected empty text, got %q", blocks[0].Text.Text)
+
+	if len(decoded) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(decoded))
+	}
+	if decoded[0].Type != "section" {
+		t.Errorf("type = %q, want %q", decoded[0].Type, "section")
+	}
+	if decoded[0].Text == nil {
+		t.Fatal("Text is nil after round-trip")
+	}
+	if decoded[0].Text.Type != "mrkdwn" {
+		t.Errorf("text type = %q, want %q", decoded[0].Text.Type, "mrkdwn")
+	}
+	if decoded[0].Text.Text != "Hello *world*" {
+		t.Errorf("text = %q, want %q", decoded[0].Text.Text, "Hello *world*")
+	}
+}
+
+func TestBlock_JSONOmitsNilText(t *testing.T) {
+	block := Block{Type: "divider"}
+	data, err := json.Marshal(block)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	expected := `{"type":"divider"}`
+	if string(data) != expected {
+		t.Errorf("JSON = %s, want %s", data, expected)
 	}
 }

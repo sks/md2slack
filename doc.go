@@ -15,8 +15,9 @@
 //   - Bold (**text** and __text__ → *text*)
 //   - Strikethrough (~~text~~ → ~text~)
 //   - Links ([text](url) → <url|text>)
+//   - Image links (![alt](url) → <url|alt>)
 //   - Numbered lists (1. item → - item)
-//   - Fenced code blocks (preserved as-is)
+//   - Fenced code blocks (``` and ~~~ preserved as-is)
 //   - Inline code (protected from transformation)
 //   - Block quotes (> preserved)
 //   - Automatic escaping of &, <, > for Slack

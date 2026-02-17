@@ -133,7 +133,7 @@ func TestConvert(t *testing.T) {
 		{
 			name:     "heading with trailing bold",
 			input:    "## Summary of **changes**",
-			expected: "*Summary of **changes***",
+			expected: "*Summary of changes*",
 		},
 		{
 			name:     "multiple links in one line",
@@ -154,6 +154,81 @@ func TestConvert(t *testing.T) {
 			name:     "link with pipe in URL escaped",
 			input:    "[Search](https://example.com/q?filter=a|b)",
 			expected: "<https://example.com/q?filter=a%7Cb|Search>",
+		},
+		{
+			name:     "image link converted to slack link",
+			input:    "![alt text](https://img.com/pic.png)",
+			expected: "<https://img.com/pic.png|alt text>",
+		},
+		{
+			name:     "image link with empty alt",
+			input:    "![](https://img.com/pic.png)",
+			expected: "<https://img.com/pic.png>",
+		},
+		{
+			name:     "image link with empty URL unchanged",
+			input:    "![alt]()",
+			expected: "![alt]()",
+		},
+		{
+			name:     "link with empty URL unchanged",
+			input:    "[text]()",
+			expected: "[text]()",
+		},
+		{
+			name:     "image link inline with text",
+			input:    "See ![logo](https://img.com/logo.png) here",
+			expected: "See <https://img.com/logo.png|logo> here",
+		},
+		{
+			name:     "tilde code fence preserved",
+			input:    "~~~\na < b\n~~~",
+			expected: "```\na < b\n```",
+		},
+		{
+			name:     "tilde code fence with language",
+			input:    "~~~go\nfmt.Println()\n~~~",
+			expected: "```\nfmt.Println()\n```",
+		},
+		{
+			name:     "empty code block",
+			input:    "```\n```",
+			expected: "```\n```",
+		},
+		{
+			name:     "heading with bold and underscores",
+			input:    "## Review of __important__ items",
+			expected: "*Review of important items*",
+		},
+		{
+			name:     "heading with multiple bolds",
+			input:    "## The **quick** and **bold** fox",
+			expected: "*The quick and bold fox*",
+		},
+		{
+			name:     "already escaped ampersand preserved",
+			input:    "Tom &amp; Jerry",
+			expected: "Tom &amp; Jerry",
+		},
+		{
+			name:     "already escaped lt preserved",
+			input:    "a &lt; b",
+			expected: "a &lt; b",
+		},
+		{
+			name:     "already escaped gt preserved",
+			input:    "a &gt; b",
+			expected: "a &gt; b",
+		},
+		{
+			name:     "slack link preserved",
+			input:    "<https://example.com|link>",
+			expected: "<https://example.com|link>",
+		},
+		{
+			name:     "slack link with entities preserved",
+			input:    "See <https://example.com|link> &amp; more",
+			expected: "See <https://example.com|link> &amp; more",
 		},
 	}
 
@@ -236,6 +311,12 @@ func TestConvert_Idempotent(t *testing.T) {
 		"> quote",
 		"plain text",
 		"No special chars here",
+		"Tom &amp; Jerry",
+		"a &lt; b &gt; c",
+		"<https://example.com|link>",
+		"See <https://example.com|link> &amp; more",
+		"<https://example.com>",
+		"> block quote with &amp; entity",
 	}
 
 	for _, input := range inputs {
@@ -245,4 +326,51 @@ func TestConvert_Idempotent(t *testing.T) {
 			t.Errorf("Not idempotent for input %q:\n  first:  %q\n  second: %q", input, first, second)
 		}
 	}
+}
+
+// TestConvert_Idempotent_FromMarkdown verifies that Convert output is stable
+// when fed back through Convert (markdown → mrkdwn → mrkdwn).
+func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
+	markdownInputs := []string{
+		"## Heading",
+		"**bold** text",
+		"[link](https://example.com)",
+		"![img](https://img.com/pic.png)",
+		"Tom & Jerry",
+		"a < b > c",
+		"~~deleted~~ text",
+		"1. first\n2. second",
+		"```\ncode & <stuff>\n```",
+		"> block quote with & and **bold**",
+	}
+
+	for _, md := range markdownInputs {
+		first := Convert(md)
+		second := Convert(first)
+		if first != second {
+			t.Errorf("Not idempotent from markdown %q:\n  first:  %q\n  second: %q", md, first, second)
+		}
+	}
+}
+
+// FuzzConvert verifies that Convert never panics on arbitrary input
+// and that its output is idempotent.
+func FuzzConvert(f *testing.F) {
+	f.Add("")
+	f.Add("Hello world")
+	f.Add("## Heading\n**bold** and [link](https://example.com)")
+	f.Add("```\ncode\n```")
+	f.Add("Tom & Jerry < > &amp; &lt; &gt;")
+	f.Add("![img](https://img.com/pic.png)")
+	f.Add("~~~\ncode\n~~~")
+	f.Add("> block quote with **bold** & stuff")
+	f.Add("<https://example.com|link>")
+
+	f.Fuzz(func(t *testing.T, input string) {
+		first := Convert(input)
+		second := Convert(first)
+		if first != second {
+			t.Errorf("Not idempotent:\n  input:  %q\n  first:  %q\n  second: %q", input, first, second)
+		}
+	})
 }
