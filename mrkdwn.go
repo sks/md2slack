@@ -15,7 +15,24 @@ var (
 	reNumberedList  = regexp.MustCompile(`^(\s*)\d+[.)]\s+`)
 )
 
-// Convert transforms standard markdown into Slack's mrkdwn format.
+// Convert transforms standard Markdown into Slack's mrkdwn text format.
+//
+// It processes the input line-by-line, applying the following transformations
+// to text outside of code fences and inline code spans:
+//
+//   - Headings become bold: ## Title → *Title*
+//   - Bold markers collapse: **text** or __text__ → *text*
+//   - Links reformat: [text](url) → <url|text>
+//   - Strikethrough simplifies: ~~text~~ → ~text~
+//   - Numbered lists normalize: 1. item → - item
+//   - Reserved characters escape: & < > → &amp; &lt; &gt;
+//   - Block quotes ("> ") pass through with the leading > preserved
+//
+// Fenced code blocks (``` delimited) and inline code (`…`) are passed through
+// unchanged. Convert is idempotent: already-converted mrkdwn is returned
+// unmodified.
+//
+// An empty string returns an empty string.
 func Convert(input string) string {
 	if input == "" {
 		return ""

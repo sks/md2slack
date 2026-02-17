@@ -2,11 +2,34 @@
 //
 // It provides two conversion functions:
 //
-//   - [Convert] transforms Markdown into Slack's mrkdwn text format, handling
-//     headings, bold, links, strikethrough, numbered lists, code blocks, and
-//     proper escaping of Slack's reserved characters.
+//   - [Convert] transforms Markdown into Slack's mrkdwn text format, suitable
+//     for use in message text, attachments, and any Slack API field that accepts
+//     mrkdwn.
 //
-//   - [ConvertToBlocks] transforms Markdown into Slack Block Kit blocks.
-//     Currently it wraps the mrkdwn output in a single section block; future
-//     versions will produce richer block structures.
+//   - [ConvertToBlocks] transforms Markdown into Slack [Block Kit] blocks,
+//     suitable for use in the "blocks" field of Slack API payloads.
+//
+// # Supported Markdown features
+//
+//   - Headings (## Heading → *Heading*)
+//   - Bold (**text** and __text__ → *text*)
+//   - Strikethrough (~~text~~ → ~text~)
+//   - Links ([text](url) → <url|text>)
+//   - Numbered lists (1. item → - item)
+//   - Fenced code blocks (preserved as-is)
+//   - Inline code (protected from transformation)
+//   - Block quotes (> preserved)
+//   - Automatic escaping of &, <, > for Slack
+//
+// # Idempotency
+//
+// [Convert] is idempotent: passing already-converted mrkdwn through a second
+// time produces the same output. This makes it safe to apply unconditionally
+// without tracking whether text has already been converted.
+//
+// # Zero dependencies
+//
+// The package uses only the Go standard library.
+//
+// [Block Kit]: https://api.slack.com/block-kit
 package md2slack
