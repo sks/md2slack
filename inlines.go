@@ -197,7 +197,7 @@ func (ctx *renderContext) handleImage(n *ast.Image, entering bool) {
 			ctx.tableState.cellBuf.WriteString(alt)
 		}
 		// Inline image (not standalone, not heading, not table): fall back to link.
-		if !ctx.inHeading && !(ctx.inTable && ctx.tableState != nil) && !ctx.isStandaloneImage {
+		if !ctx.inHeading && (!ctx.inTable || ctx.tableState == nil) && !ctx.isStandaloneImage {
 			label := ctx.imageAlt
 			if label == "" {
 				label = ctx.imageURL

@@ -105,8 +105,7 @@ func main() {
 				OK bool   `json:"ok"`
 				TS string `json:"ts"`
 			}
-			json.Unmarshal([]byte(resp), &slackResp)
-			if slackResp.OK {
+			if err := json.Unmarshal([]byte(resp), &slackResp); err == nil && slackResp.OK {
 				parentTS = slackResp.TS
 			}
 		}
