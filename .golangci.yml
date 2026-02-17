@@ -1,0 +1,47 @@
+run:
+  timeout: 3m
+  # Ensure we fail if the Go version in the code doesn't match
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - gosimple
+    - misspell
+    - revive       # Replacement for the deprecated golint; crucial for exported Doc comments
+    - gofmt        # Ensures your library follows standard formatting
+    - goimports    # Keeps your imports clean and organized
+    - unparam      # Finds unused function parameters (helps keep your public API lean)
+    - prealloc     # Suggests slice pre-allocation (great for library performance)
+    - unconvert    # Removes unnecessary type conversions
+    - nakedret     # Prevents long functions from using "naked" returns (clarity)
+    - nolintlint   # Ensures your //nolint directives are actually necessary and explained
+    - copyloopvar  # Specifically for Go 1.22+ to catch loop variable issues (replaces exportloopref)
+
+linters-settings:
+  revive:
+    # Ensures all exported functions, types, and consts have proper Godoc comments
+    rules:
+      - name: exported
+        severity: warning
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment # Only enable if you are micro-optimizing memory/struct padding
+
+issues:
+  # Maximum issues count per linter. 0 for unlimited.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Don't hide issues just because they are "common"
+  exclude-use-default: false
