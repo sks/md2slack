@@ -1,38 +1,36 @@
 # Demo: posting to Slack
 
-This guide shows how to write a small Go program that uses md2slack to convert Markdown and post the result to a Slack channel via the [chat.postMessage](https://api.slack.com/methods/chat.postMessage) API.
-
-The example uses [Claude Code](https://claude.ai/code) to generate real Markdown content, then pipes it through md2slack into Slack -- a realistic workflow for AI-powered notifications and reports.
+This guide walks you through building a small Go program that converts Markdown to Slack format using md2slack, then posts the result to a Slack channel.
 
 ## Prerequisites
 
-1. **Slack Bot Token** -- Create a Slack app at <https://api.slack.com/apps>, add the `chat:write` bot scope, install it to your workspace, and copy the `xoxb-...` token.
-2. **Channel ID** -- Right-click a channel in Slack, select *View channel details*, and copy the ID at the bottom (e.g. `C0123456789`). The bot must be a member of the channel.
-3. **Claude Code** -- Install via `npm install -g @anthropic-ai/claude-code` (optional, only needed for the Claude-sourced example).
+| What | How to get it |
+|------|---------------|
+| **Go 1.22+** | Install from <https://go.dev/dl/> — run `go version` to verify |
+| **Slack Bot Token** | Create an app at <https://api.slack.com/apps>, add the `chat:write` bot scope, install to your workspace, copy the `xoxb-…` token |
+| **Channel ID** | In Slack, right-click a channel → *View channel details* → copy the ID at the bottom (e.g. `C0123456789`). Invite the bot to the channel |
+| **Claude Code** *(optional)* | Install from <https://docs.claude.com/en/docs/setup> — only needed for the Claude-generated example |
 
-## Generate Markdown with Claude Code
+## Step 1 — Set up a new Go project
 
-Use Claude Code to produce Markdown that exercises headings, bold, code blocks, lists, and links:
-
-```bash
-claude -p \
-  "Explain the architecture of this project briefly. \
-   Use markdown headings, bold, code examples with language tags, \
-   and link references." \
-  --output-format stream-json 2>/dev/null \
-  | jq -r 'select(.type == "result") | .result' \
-  > /tmp/claude_output.md
-```
-
-This saves the final Markdown to `/tmp/claude_output.md`. You can inspect it:
+Create a directory for your demo program and initialize a Go module:
 
 ```bash
-cat /tmp/claude_output.md
+mkdir slack-demo && cd slack-demo
+go mod init slack-demo
 ```
 
-## Script
+Then add md2slack as a dependency:
 
-Create a file (e.g. `cmd/demo/main.go`) outside the library. It reads Markdown from a file (or falls back to a built-in sample) and posts it to Slack using both output modes:
+```bash
+go get github.com/navidemad/md2slack
+```
+
+This creates `go.mod` and `go.sum` files that Go uses to track dependencies.
+
+## Step 2 — Write the demo program
+
+Create `main.go` with the following content. It reads Markdown from a file (or uses a built-in sample) and posts it to Slack in two formats:
 
 ```go
 package main
@@ -57,7 +55,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Read Markdown from file argument, or use a built-in sample.
+	// Read Markdown from a file argument, or fall back to the built-in sample.
 	md := sampleMarkdown
 	if len(os.Args) > 1 {
 		data, err := os.ReadFile(os.Args[1])
@@ -68,11 +66,11 @@ func main() {
 		md = string(data)
 	}
 
-	// --- Post as mrkdwn text ---
+	// Post as mrkdwn text (simple formatting).
 	mrkdwn := md2slack.Convert(md)
 	postText(token, channel, mrkdwn)
 
-	// --- Post as Block Kit blocks ---
+	// Post as Block Kit blocks (rich layout).
 	blocks := md2slack.ConvertToBlocks(md)
 	postBlocks(token, channel, blocks)
 }
@@ -127,38 +125,56 @@ func slackPost(token string, payload []byte) string {
 }
 ```
 
-## Run
+## Step 3 — Run the demo
 
-With the built-in sample:
+Set your Slack credentials and run the program:
 
 ```bash
 export SLACK_TOKEN="xoxb-your-token"
 export SLACK_CHANNEL="C0123456789"
-go run ./cmd/demo/
+go run main.go
 ```
 
-With Claude-generated Markdown:
+This posts two messages to your channel — one using `Convert` (plain mrkdwn) and one using `ConvertToBlocks` (Block Kit blocks). Compare how Slack renders each format.
+
+To use a Markdown file instead of the built-in sample:
 
 ```bash
-go run ./cmd/demo/ /tmp/claude_output.md
+go run main.go /path/to/your/file.md
 ```
 
-This posts two messages to the channel: one using `Convert` (plain mrkdwn) and one using `ConvertToBlocks` (Block Kit blocks). Compare how Slack renders each format.
+## Optional: generate Markdown with Claude Code
 
-## One-liner: Claude to Slack
+Use Claude Code to produce Markdown that exercises headings, bold, code blocks, lists, and links:
 
-Combine generation and posting in a single pipeline:
+```bash
+claude -p \
+  "Explain the architecture of this project briefly. \
+   Use markdown headings, bold, code examples with language tags, \
+   and link references." \
+  --output-format stream-json 2>/dev/null \
+  | jq -r 'select(.type == "result") | .result' \
+  > /tmp/claude_output.md
+```
+
+Then post it:
+
+```bash
+go run main.go /tmp/claude_output.md
+```
+
+Or combine generation and posting in one pipeline:
 
 ```bash
 claude -p "Summarize the latest changes in this repo." \
   --output-format stream-json 2>/dev/null \
   | jq -r 'select(.type == "result") | .result' \
-  | go run ./cmd/demo/ /dev/stdin
+  | go run main.go /dev/stdin
 ```
 
-## Threading
+## Tip: threading replies
 
-To post both messages in the same thread, capture the `"ts"` field from the first response and include it as `"thread_ts"` in the second payload:
+To post both messages in the same Slack thread, capture the `"ts"` field from the first response and pass it as `"thread_ts"` in the second payload:
 
 ```go
 var result struct{ TS string `json:"ts"` }
