@@ -16,8 +16,10 @@ var (
 	reNumberedList  = regexp.MustCompile(`^(\s*)\d+[.)]\s+`)
 	reSlackLink     = regexp.MustCompile(`<[^\s<>][^<>]*>`)
 	reEntity        = regexp.MustCompile(`^&(amp|lt|gt);`)
-	reConsecStars   = regexp.MustCompile(`\*{2,}`)
-	reConsecUnders  = regexp.MustCompile(`_{2,}`)
+	reConsecStars     = regexp.MustCompile(`\*{2,}`)
+	reConsecUnders    = regexp.MustCompile(`_{2,}`)
+	reHorizontalRule  = regexp.MustCompile(`^\s*(?:-[\s]*-[\s]*-[-\s]*|_[\s]*_[\s]*_[_\s]*|\*[\s]*\*[\s]*\*[*\s]*)$`)
+	reStandaloneImage = regexp.MustCompile(`^\s*!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)\s*$`)
 )
 
 // Convert transforms standard Markdown into Slack's mrkdwn text format.

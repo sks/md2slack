@@ -47,11 +47,50 @@ func ExampleConvertToBlocks_json() {
 	// Output:
 	// [
 	//   {
+	//     "type": "header",
+	//     "text": {
+	//       "type": "plain_text",
+	//       "text": "Status"
+	//     }
+	//   },
+	//   {
 	//     "type": "section",
 	//     "text": {
 	//       "type": "mrkdwn",
-	//       "text": "*Status*\n\nAll systems *operational*."
+	//       "text": "All systems *operational*."
 	//     }
+	//   }
+	// ]
+}
+
+func ExampleConvertToBlocks_richBlocks() {
+	md := "# Welcome\n\nHello **world**.\n\n---\n\n![banner](https://example.com/banner.png)"
+	blocks := md2slack.ConvertToBlocks(md)
+	out, _ := json.MarshalIndent(blocks, "", "  ")
+	fmt.Println(string(out))
+	// Output:
+	// [
+	//   {
+	//     "type": "header",
+	//     "text": {
+	//       "type": "plain_text",
+	//       "text": "Welcome"
+	//     }
+	//   },
+	//   {
+	//     "type": "section",
+	//     "text": {
+	//       "type": "mrkdwn",
+	//       "text": "Hello *world*."
+	//     }
+	//   },
+	//   {
+	//     "type": "divider"
+	//   },
+	//   {
+	//     "type": "image",
+	//     "image_url": "https://example.com/banner.png",
+	//     "alt_text": "banner"
 	//   }
 	// ]
 }

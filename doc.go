@@ -7,7 +7,11 @@
 //     mrkdwn.
 //
 //   - [ConvertToBlocks] transforms Markdown into Slack [Block Kit] blocks,
-//     suitable for use in the "blocks" field of Slack API payloads.
+//     suitable for use in the "blocks" field of Slack API payloads. It splits
+//     input into semantically appropriate block types: headings become "header"
+//     blocks, horizontal rules become "divider" blocks, standalone images become
+//     "image" blocks, and remaining text is grouped into "section" blocks split
+//     at paragraph boundaries.
 //
 // # Supported Markdown features
 //

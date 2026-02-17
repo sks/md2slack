@@ -40,22 +40,47 @@ This is *bold* and a <https://example.com|link>.
 ### Block Kit blocks
 
 ```go
-blocks := md2slack.ConvertToBlocks("Hello **world**")
+blocks := md2slack.ConvertToBlocks("# Welcome\n\nHello **world**.\n\n---\n\n![banner](https://example.com/banner.png)")
 ```
 
 ```json
 [
   {
+    "type": "header",
+    "text": {
+      "type": "plain_text",
+      "text": "Welcome"
+    }
+  },
+  {
     "type": "section",
     "text": {
       "type": "mrkdwn",
-      "text": "Hello *world*"
+      "text": "Hello *world*."
     }
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "image",
+    "image_url": "https://example.com/banner.png",
+    "alt_text": "banner"
   }
 ]
 ```
 
-`ConvertToBlocks` currently wraps the mrkdwn output in a single section block. Future versions will produce richer block structures (headers, code blocks, lists as separate blocks).
+`ConvertToBlocks` scans the input line-by-line and produces semantically appropriate block types:
+
+| Markdown construct | Block Kit block type |
+| :--- | :--- |
+| `# Heading` through `###### Heading` | `header` (plain_text) |
+| `---`, `***`, `___` | `divider` |
+| `![alt](url)` (standalone line) | `image` |
+| Fenced code blocks (`` ``` `` / `~~~`) | `section` (mrkdwn with `` ``` `` delimiters) |
+| Everything else | `section` (mrkdwn), split at blank lines |
+
+Inline images within text remain as mrkdwn links (`<url|alt>`) inside section blocks.
 
 ## Conversion reference
 
@@ -64,7 +89,8 @@ blocks := md2slack.ConvertToBlocks("Hello **world**")
 | `**bold**` / `__bold__` | `*bold*` | |
 | `~~strikethrough~~` | `~strikethrough~` | |
 | `[text](url)` | `<url\|text>` | Pipes escaped as `%7C`, nested parens supported |
-| `# Heading` | `*Heading*` | All levels h1–h6 |
+| `![alt](url)` | `<url\|alt>` | Standalone lines become image blocks in `ConvertToBlocks` |
+| `# Heading` | `*Heading*` | All levels h1–h6; header blocks in `ConvertToBlocks` |
 | `1. item` / `1) item` | `- item` | Numbered lists become bullet lists |
 | `` `code` `` | `` `code` `` | Content left untouched |
 | ` ``` ` code blocks | ` ``` ` code blocks | Language hint stripped, content preserved |
