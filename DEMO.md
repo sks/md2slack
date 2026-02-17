@@ -162,7 +162,7 @@ claude -p \
    - A fenced code block with a bash language tag showing CLI usage
    - An inline [named link](https://example.com) within a paragraph
    - A standalone link on its own line: [Link text](url)
-   - An image on its own line: ![alt text](https://via.placeholder.com/600x200)
+   - An image on its own line: ![alt text](https://placehold.co/600x200.png)
    - A bulleted list with at least 3 items
    - A numbered list with at least 3 items
    - A blockquote (> ) with at least two lines
