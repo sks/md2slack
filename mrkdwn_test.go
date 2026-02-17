@@ -111,6 +111,31 @@ func TestConvert(t *testing.T) {
 			expected: "This is *already slack bold*",
 		},
 		{
+			name:     "italic with underscores passes through",
+			input:    "_italic_",
+			expected: "_italic_",
+		},
+		{
+			name:     "italic with underscores in sentence",
+			input:    "This is _italic_ text",
+			expected: "This is _italic_ text",
+		},
+		{
+			name:     "bold and italic together",
+			input:    "**bold** and _italic_",
+			expected: "*bold* and _italic_",
+		},
+		{
+			name:     "italic and bold together",
+			input:    "_italic_ and **bold**",
+			expected: "_italic_ and *bold*",
+		},
+		{
+			name:     "multiple italic spans",
+			input:    "_one_ and _two_ and _three_",
+			expected: "_one_ and _two_ and _three_",
+		},
+		{
 			name:     "code block content not escaped",
 			input:    "```\na < b && c > d\n```",
 			expected: "```\na < b && c > d\n```",
@@ -230,6 +255,36 @@ func TestConvert(t *testing.T) {
 			input:    "See <https://example.com|link> &amp; more",
 			expected: "See <https://example.com|link> &amp; more",
 		},
+		{
+			name:     "unordered list asterisk",
+			input:    "* First item",
+			expected: "- First item",
+		},
+		{
+			name:     "unordered list plus",
+			input:    "+ Second item",
+			expected: "- Second item",
+		},
+		{
+			name:     "unordered list dash unchanged",
+			input:    "- Third item",
+			expected: "- Third item",
+		},
+		{
+			name:     "indented unordered list asterisk",
+			input:    "   * Nested item",
+			expected: "   - Nested item",
+		},
+		{
+			name:     "asterisk bold not list",
+			input:    "*bold text*",
+			expected: "*bold text*",
+		},
+		{
+			name:     "unordered list with bold content",
+			input:    "* **Important** item",
+			expected: "- *Important* item",
+		},
 	}
 
 	for _, tt := range tests {
@@ -305,6 +360,8 @@ func TestConvert_Idempotent(t *testing.T) {
 	// Already-converted Slack mrkdwn should not change on a second pass.
 	inputs := []string{
 		"*bold text*",
+		"_italic text_",
+		"*bold* and _italic_",
 		"```\ncode block\n```",
 		"- list item",
 		"~struck~",
@@ -334,12 +391,16 @@ func TestConvert_Idempotent_FromMarkdown(t *testing.T) {
 	markdownInputs := []string{
 		"## Heading",
 		"**bold** text",
+		"_italic_ text",
+		"**bold** and _italic_",
 		"[link](https://example.com)",
 		"![img](https://img.com/pic.png)",
 		"Tom & Jerry",
 		"a < b > c",
 		"~~deleted~~ text",
 		"1. first\n2. second",
+		"* first\n* second",
+		"+ first\n+ second",
 		"```\ncode & <stuff>\n```",
 		"> block quote with & and **bold**",
 	}

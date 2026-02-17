@@ -4,21 +4,32 @@ import "strings"
 
 // Block represents a single Slack Block Kit layout block.
 //
+// For "image" blocks, ImageURL and AltText are required; Title is optional
+// and displayed above the image when set.
+//
+// For "context" blocks, Elements holds the text objects displayed in the block.
+//
 // See https://api.slack.com/reference/block-kit/blocks for the full
 // Block Kit specification.
 type Block struct {
-	// Type identifies the block kind (e.g. "section", "divider", "header", "image").
+	// Type identifies the block kind (e.g. "section", "divider", "header", "image", "context").
 	Type string `json:"type"`
 
 	// Text holds the block's text content. Nil for block types that don't
-	// carry text (e.g. "divider").
+	// carry text (e.g. "divider", "context").
 	Text *TextObject `json:"text,omitempty"`
+
+	// Elements holds text objects for "context" blocks.
+	Elements []TextObject `json:"elements,omitempty"`
 
 	// ImageURL is the URL of the image for "image" blocks.
 	ImageURL string `json:"image_url,omitempty"`
 
 	// AltText is the alt text for "image" blocks.
 	AltText string `json:"alt_text,omitempty"`
+
+	// Title is an optional title for "image" blocks.
+	Title *TextObject `json:"title,omitempty"`
 }
 
 // TextObject represents a Slack Block Kit text composition object.
@@ -40,11 +51,13 @@ type TextObject struct {
 //
 //   - Headings (# … through ###### …) become "header" blocks with plain_text
 //   - Horizontal rules (---, ***, ___) become "divider" blocks
+//   - Blockquotes (> text) become "context" blocks with mrkdwn elements
 //   - Standalone images (![alt](url) on their own line) become "image" blocks
 //   - Fenced code blocks (``` or ~~~) become "section" blocks with code fences
 //   - All other text is accumulated into "section" blocks with mrkdwn, split
 //     at blank lines (paragraph boundaries)
 //
+// Consecutive blockquote lines are merged into a single context block.
 // Inline images within text remain as mrkdwn links in section blocks.
 // Text segments are processed through [Convert] for inline formatting.
 //
@@ -66,6 +79,7 @@ func ConvertToBlocks(markdown string) []Block {
 	lines := strings.Split(markdown, "\n")
 	var blocks []Block
 	var textBuf []string
+	var quoteBuf []string
 	inCodeBlock := false
 	var codeBuf []string
 
@@ -91,6 +105,31 @@ func ConvertToBlocks(markdown string) []Block {
 		if inCodeBlock {
 			codeBuf = append(codeBuf, line)
 			continue
+		}
+
+		// Block quote → context block.
+		if strings.HasPrefix(trimmed, "> ") || trimmed == ">" {
+			blocks = flushTextBuffer(blocks, textBuf)
+			textBuf = nil
+			// Strip the > prefix.
+			var content string
+			if trimmed == ">" {
+				content = ""
+			} else {
+				idx := strings.Index(line, ">")
+				content = line[idx+1:]
+				if strings.HasPrefix(content, " ") {
+					content = content[1:]
+				}
+			}
+			quoteBuf = append(quoteBuf, content)
+			continue
+		}
+
+		// If we were in a blockquote and hit a non-blockquote line, flush it.
+		if len(quoteBuf) > 0 {
+			blocks = flushQuoteBuffer(blocks, quoteBuf)
+			quoteBuf = nil
 		}
 
 		// Horizontal rule → divider block.
@@ -123,11 +162,18 @@ func ConvertToBlocks(markdown string) []Block {
 			if alt == "" {
 				alt = " "
 			}
-			blocks = append(blocks, Block{
+			block := Block{
 				Type:     "image",
 				ImageURL: m[2],
 				AltText:  alt,
-			})
+			}
+			if m[1] != "" {
+				block.Title = &TextObject{
+					Type: "plain_text",
+					Text: m[1],
+				}
+			}
+			blocks = append(blocks, block)
 			continue
 		}
 
@@ -148,6 +194,9 @@ func ConvertToBlocks(markdown string) []Block {
 		blocks = appendCodeBlock(blocks, codeBuf)
 	} else {
 		blocks = flushTextBuffer(blocks, textBuf)
+	}
+	if len(quoteBuf) > 0 {
+		blocks = flushQuoteBuffer(blocks, quoteBuf)
 	}
 
 	if len(blocks) == 0 {
@@ -177,6 +226,22 @@ func flushTextBuffer(blocks []Block, lines []string) []Block {
 		Text: &TextObject{
 			Type: "mrkdwn",
 			Text: text,
+		},
+	})
+}
+
+// flushQuoteBuffer joins accumulated blockquote lines, runs them through
+// Convert for inline formatting, and appends a context block. Returns blocks
+// unchanged if lines is empty.
+func flushQuoteBuffer(blocks []Block, lines []string) []Block {
+	if len(lines) == 0 {
+		return blocks
+	}
+	text := Convert(strings.Join(lines, "\n"))
+	return append(blocks, Block{
+		Type: "context",
+		Elements: []TextObject{
+			{Type: "mrkdwn", Text: text},
 		},
 	})
 }

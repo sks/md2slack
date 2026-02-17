@@ -9,18 +9,20 @@
 //   - [ConvertToBlocks] transforms Markdown into Slack [Block Kit] blocks,
 //     suitable for use in the "blocks" field of Slack API payloads. It splits
 //     input into semantically appropriate block types: headings become "header"
-//     blocks, horizontal rules become "divider" blocks, standalone images become
-//     "image" blocks, and remaining text is grouped into "section" blocks split
-//     at paragraph boundaries.
+//     blocks, horizontal rules become "divider" blocks, blockquotes become
+//     "context" blocks, standalone images become "image" blocks, and remaining
+//     text is grouped into "section" blocks split at paragraph boundaries.
 //
 // # Supported Markdown features
 //
 //   - Headings (## Heading → *Heading*)
 //   - Bold (**text** and __text__ → *text*)
+//   - Italic (_text_ passes through as Slack italic)
 //   - Strikethrough (~~text~~ → ~text~)
 //   - Links ([text](url) → <url|text>)
 //   - Image links (![alt](url) → <url|alt>)
 //   - Numbered lists (1. item → - item)
+//   - Unordered lists (* item and + item → - item)
 //   - Fenced code blocks (``` and ~~~ preserved as-is)
 //   - Inline code (protected from transformation)
 //   - Block quotes (> preserved)

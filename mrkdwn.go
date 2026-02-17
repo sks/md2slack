@@ -13,7 +13,8 @@ var (
 	reImageLink     = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
 	reLink          = regexp.MustCompile(`\[([^\]]+)\]\(((?:[^()\s]*(?:\([^()]*\))?)*)\)`)
 	reStrikethrough = regexp.MustCompile(`~~(.+?)~~`)
-	reNumberedList  = regexp.MustCompile(`^(\s*)\d+[.)]\s+`)
+	reNumberedList   = regexp.MustCompile(`^(\s*)\d+[.)]\s+`)
+	reUnorderedList  = regexp.MustCompile(`^(\s*)[*+]\s+`)
 	reSlackLink     = regexp.MustCompile(`<[^\s<>][^<>]*>`)
 	reEntity        = regexp.MustCompile(`^&(amp|lt|gt);`)
 	reConsecStars     = regexp.MustCompile(`\*{2,}`)
@@ -29,12 +30,20 @@ var (
 //
 //   - Headings become bold: ## Title → *Title*
 //   - Bold markers collapse: **text** or __text__ → *text*
+//   - Italic underscores pass through: _text_ → _text_ (already Slack italic)
 //   - Links reformat: [text](url) → <url|text>
 //   - Image links: ![alt](url) → <url|alt>
 //   - Strikethrough simplifies: ~~text~~ → ~text~
 //   - Numbered lists normalize: 1. item → - item
+//   - Unordered lists normalize: * item / + item → - item
 //   - Reserved characters escape: & < > → &amp; &lt; &gt;
 //   - Block quotes ("> ") pass through with the leading > preserved
+//
+// Markdown italic written as _text_ (underscores) maps directly to Slack's
+// italic syntax and passes through unchanged. Markdown italic written as *text*
+// (single asterisks) is ambiguous with Slack's bold syntax and is intentionally
+// left as-is to preserve idempotency; prefer _text_ for italic in Markdown that
+// will be converted to Slack.
 //
 // Fenced code blocks (``` or ~~~ delimited) and inline code (`…`) are passed through
 // unchanged. Convert is idempotent: already-converted mrkdwn is returned
@@ -198,6 +207,12 @@ func applyInlineTransforms(seg string, fullLine string) string {
 	// 6. Numbered lists — 1. item / 1) item → - item
 	if loc := reNumberedList.FindStringIndex(seg); loc != nil {
 		prefix := reNumberedList.FindStringSubmatch(seg)
+		seg = prefix[1] + "- " + seg[loc[1]:]
+	}
+
+	// 7. Unordered lists — * item / + item → - item
+	if loc := reUnorderedList.FindStringIndex(seg); loc != nil {
+		prefix := reUnorderedList.FindStringSubmatch(seg)
 		seg = prefix[1] + "- " + seg[loc[1]:]
 	}
 

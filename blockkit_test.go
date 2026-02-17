@@ -86,7 +86,7 @@ func TestConvertToBlocks(t *testing.T) {
 			name:  "standalone image",
 			input: "![logo](https://example.com/logo.png)",
 			want: []Block{
-				{Type: "image", ImageURL: "https://example.com/logo.png", AltText: "logo"},
+				{Type: "image", ImageURL: "https://example.com/logo.png", AltText: "logo", Title: &TextObject{Type: "plain_text", Text: "logo"}},
 			},
 		},
 		{
@@ -148,7 +148,7 @@ func TestConvertToBlocks(t *testing.T) {
 				{Type: "header", Text: &TextObject{Type: "plain_text", Text: "Welcome"}},
 				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "Hello *world*."}},
 				{Type: "divider"},
-				{Type: "image", ImageURL: "https://example.com/banner.png", AltText: "banner"},
+				{Type: "image", ImageURL: "https://example.com/banner.png", AltText: "banner", Title: &TextObject{Type: "plain_text", Text: "banner"}},
 				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "```\ncode here\n```"}},
 				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "Goodbye."}},
 			},
@@ -165,6 +165,43 @@ func TestConvertToBlocks(t *testing.T) {
 			input: "## Click [here](https://example.com)",
 			want: []Block{
 				{Type: "header", Text: &TextObject{Type: "plain_text", Text: "Click [here](https://example.com)"}},
+			},
+		},
+		{
+			name:  "blockquote becomes context block",
+			input: "> This is a quote",
+			want: []Block{
+				{Type: "context", Elements: []TextObject{{Type: "mrkdwn", Text: "This is a quote"}}},
+			},
+		},
+		{
+			name:  "multi-line blockquote becomes single context block",
+			input: "> Line one\n> Line two",
+			want: []Block{
+				{Type: "context", Elements: []TextObject{{Type: "mrkdwn", Text: "Line one\nLine two"}}},
+			},
+		},
+		{
+			name:  "blockquote with inline formatting",
+			input: "> This is **bold** and [link](https://example.com)",
+			want: []Block{
+				{Type: "context", Elements: []TextObject{{Type: "mrkdwn", Text: "This is *bold* and <https://example.com|link>"}}},
+			},
+		},
+		{
+			name:  "text then blockquote then text",
+			input: "Before.\n\n> A quote\n\nAfter.",
+			want: []Block{
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "Before."}},
+				{Type: "context", Elements: []TextObject{{Type: "mrkdwn", Text: "A quote"}}},
+				{Type: "section", Text: &TextObject{Type: "mrkdwn", Text: "After."}},
+			},
+		},
+		{
+			name:  "empty blockquote line",
+			input: "> First\n>\n> Second",
+			want: []Block{
+				{Type: "context", Elements: []TextObject{{Type: "mrkdwn", Text: "First\n\nSecond"}}},
 			},
 		},
 	}
@@ -245,6 +282,23 @@ func TestBlock_JSONImageBlock(t *testing.T) {
 	}
 }
 
+func TestBlock_JSONImageBlockWithTitle(t *testing.T) {
+	block := Block{
+		Type:     "image",
+		ImageURL: "https://example.com/img.png",
+		AltText:  "example",
+		Title:    &TextObject{Type: "plain_text", Text: "Example Image"},
+	}
+	data, err := json.Marshal(block)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	expected := `{"type":"image","image_url":"https://example.com/img.png","alt_text":"example","title":{"type":"plain_text","text":"Example Image"}}`
+	if string(data) != expected {
+		t.Errorf("JSON = %s, want %s", data, expected)
+	}
+}
+
 func TestBlock_JSONHeaderBlock(t *testing.T) {
 	block := Block{
 		Type: "header",
@@ -255,6 +309,23 @@ func TestBlock_JSONHeaderBlock(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 	expected := `{"type":"header","text":{"type":"plain_text","text":"Hello"}}`
+	if string(data) != expected {
+		t.Errorf("JSON = %s, want %s", data, expected)
+	}
+}
+
+func TestBlock_JSONContextBlock(t *testing.T) {
+	block := Block{
+		Type: "context",
+		Elements: []TextObject{
+			{Type: "mrkdwn", Text: "quoted text"},
+		},
+	}
+	data, err := json.Marshal(block)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	expected := `{"type":"context","elements":[{"type":"mrkdwn","text":"quoted text"}]}`
 	if string(data) != expected {
 		t.Errorf("JSON = %s, want %s", data, expected)
 	}

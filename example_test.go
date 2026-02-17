@@ -90,7 +90,11 @@ func ExampleConvertToBlocks_richBlocks() {
 	//   {
 	//     "type": "image",
 	//     "image_url": "https://example.com/banner.png",
-	//     "alt_text": "banner"
+	//     "alt_text": "banner",
+	//     "title": {
+	//       "type": "plain_text",
+	//       "text": "banner"
+	//     }
 	//   }
 	// ]
 }
