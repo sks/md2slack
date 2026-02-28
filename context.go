@@ -60,10 +60,10 @@ type renderContext struct {
 
 // listFrame tracks one level of list nesting.
 type listFrame struct {
-	style      slack.RichTextListElementType // RTEListOrdered or RTEListBullet
-	items      []slack.RichTextElement       // accumulated RichTextSection items
-	indent     int
-	nestedLists []*slack.RichTextList // nested lists collected from children, emitted as siblings
+	style       slack.RichTextListElementType // RTEListOrdered or RTEListBullet
+	items       []slack.RichTextElement       // accumulated RichTextSection items
+	indent      int
+	nestedLists []slack.RichTextElement // nested lists collected from children, emitted as siblings
 }
 
 // blockquoteFrame tracks one level of blockquote nesting.
@@ -151,6 +151,9 @@ func (ctx *renderContext) flushInlineToSection() *slack.RichTextSection {
 
 // emitBlock appends a block to the output.
 func (ctx *renderContext) emitBlock(b slack.Block) {
+	if b == nil {
+		return
+	}
 	ctx.blocks = append(ctx.blocks, b)
 }
 
