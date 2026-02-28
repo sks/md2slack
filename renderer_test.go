@@ -427,9 +427,11 @@ func TestConvert_NestedList(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected RichTextBlock, got %T", blocks[0])
 	}
-	// Should have a list with nested items.
-	if len(rt.Elements) < 1 {
-		t.Fatal("expected at least 1 element in rich text block")
+	// Should have the parent list and the nested list as sibling elements
+	// in the same RichTextBlock (not nested inside each other).
+	if len(rt.Elements) < 2 {
+		t.Fatalf("expected at least 2 elements (parent list + nested list), got %d: %s",
+			len(rt.Elements), blockJSON(t, blocks))
 	}
 	// The top-level list
 	list, ok := rt.Elements[0].(*slack.RichTextList)
@@ -438,6 +440,20 @@ func TestConvert_NestedList(t *testing.T) {
 	}
 	if list.Style != slack.RTEListBullet {
 		t.Errorf("expected bullet style, got %q", list.Style)
+	}
+	if list.Indent != 0 {
+		t.Errorf("expected indent 0 for parent list, got %d", list.Indent)
+	}
+	// The nested list should be a sibling element with indent 1
+	nestedList, ok := rt.Elements[1].(*slack.RichTextList)
+	if !ok {
+		t.Fatalf("expected RichTextList for nested list, got %T", rt.Elements[1])
+	}
+	if nestedList.Indent != 1 {
+		t.Errorf("expected indent 1 for nested list, got %d", nestedList.Indent)
+	}
+	if len(nestedList.Elements) != 2 {
+		t.Errorf("expected 2 items in nested list, got %d", len(nestedList.Elements))
 	}
 }
 
@@ -769,17 +785,18 @@ func TestConvert_EdgeCases(t *testing.T) {
 				if list.Style != slack.RTEListBullet {
 					t.Errorf("expected outer bullet list, got %q", list.Style)
 				}
-				// Should have nested ordered list among elements.
+				// Nested ordered list should be a sibling element in the
+				// RichTextBlock, not inside the parent list's Elements.
 				hasNested := false
-				for _, elem := range list.Elements {
+				for _, elem := range rt.Elements[1:] {
 					if nested, ok := elem.(*slack.RichTextList); ok {
-						if nested.Style == slack.RTEListOrdered {
+						if nested.Style == slack.RTEListOrdered && nested.Indent == 1 {
 							hasNested = true
 						}
 					}
 				}
 				if !hasNested {
-					t.Error("expected nested ordered list inside bullet list")
+					t.Errorf("expected nested ordered list as sibling element, got: %s", blockJSON(t, blocks))
 				}
 			},
 		},
@@ -927,6 +944,75 @@ func TestConvert_EdgeCases(t *testing.T) {
 			}
 			tt.check(t, blocks)
 		})
+	}
+}
+
+// TestConvert_NestedListJSON verifies that nested lists produce valid Slack Block Kit JSON.
+// Slack rejects rich_text_list nested inside rich_text_list elements — nested lists
+// must be sibling elements within the same rich_text block with incremented indent.
+func TestConvert_NestedListJSON(t *testing.T) {
+	input := "- Item one\n- Item two\n  - Nested A\n  - Nested B\n- Item three"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+
+	data, err := json.Marshal(blocks)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	jsonStr := string(data)
+
+	// Verify no empty text elements
+	if strings.Contains(jsonStr, `"text":""`) {
+		t.Errorf("JSON contains empty text element: %s", jsonStr)
+	}
+
+	// Verify structure: should have a single RichTextBlock with multiple list elements
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	rt := blocks[0].(*slack.RichTextBlock)
+
+	// Should have parent list (indent 0) and nested list (indent 1) as siblings
+	if len(rt.Elements) < 2 {
+		t.Fatalf("expected at least 2 elements, got %d: %s", len(rt.Elements), blockJSON(t, blocks))
+	}
+
+	// All elements should be RichTextList — no nesting
+	for i, elem := range rt.Elements {
+		list, ok := elem.(*slack.RichTextList)
+		if !ok {
+			t.Errorf("element[%d]: expected RichTextList, got %T", i, elem)
+			continue
+		}
+		// Verify list items are only RichTextSection (no nested lists)
+		for j, item := range list.Elements {
+			if _, ok := item.(*slack.RichTextSection); !ok {
+				t.Errorf("element[%d].items[%d]: expected RichTextSection, got %T", i, j, item)
+			}
+		}
+	}
+}
+
+// TestConvert_NoEmptyTextInListItems verifies that list items without text
+// (e.g., items that only contain nested lists) don't produce empty sections.
+func TestConvert_NoEmptyTextInListItems(t *testing.T) {
+	// This markdown creates a list item "Item two" that has a nested list
+	// but the item itself should still have its text.
+	input := "- Item one\n- Item two\n  - Nested\n- Item three"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+
+	data, err := json.Marshal(blocks)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	if strings.Contains(string(data), `"text":""`) {
+		t.Errorf("found empty text element in JSON output: %s", blockJSON(t, blocks))
 	}
 }
 
