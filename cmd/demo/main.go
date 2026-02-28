@@ -11,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/navidemad/md2slack"
+	"github.com/presmihaylov/md2slack"
 	"github.com/slack-go/slack"
 )
 
@@ -19,7 +19,7 @@ const sampleMarkdown = `# Hello from md2slack
 
 This is **bold**, _italic_, and ~~strikethrough~~.
 
-Here is some ` + "`inline code`" + ` and a [link](https://github.com/navidemad/md2slack).
+Here is some ` + "`inline code`" + ` and a [link](https://github.com/presmihaylov/md2slack).
 
 ` + "```go" + `
 func main() {

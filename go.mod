@@ -1,4 +1,4 @@
-module github.com/navidemad/md2slack
+module github.com/presmihaylov/md2slack
 
 go 1.22
 

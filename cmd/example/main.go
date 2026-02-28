@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/navidemad/md2slack"
+	"github.com/presmihaylov/md2slack"
 )
 
 func main() {
