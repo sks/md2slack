@@ -1357,6 +1357,118 @@ func TestConvert_MixedDeeplyNestedList(t *testing.T) {
 	}
 }
 
+// TestConvert_MultipleTables verifies two tables in one document produce
+// independent TableBlocks with unique block IDs and correct content.
+func TestConvert_MultipleTables(t *testing.T) {
+	input := "| A | B |\n|---|---|\n| 1 | 2 |\n\n| X | Y |\n|---|---|\n| 3 | 4 |"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %d: %s", len(blocks), blockJSON(t, blocks))
+	}
+
+	tb1, ok := blocks[0].(*slack.TableBlock)
+	if !ok {
+		t.Fatalf("expected TableBlock[0], got %T", blocks[0])
+	}
+	tb2, ok := blocks[1].(*slack.TableBlock)
+	if !ok {
+		t.Fatalf("expected TableBlock[1], got %T", blocks[1])
+	}
+
+	// Unique block IDs.
+	if tb1.BlockID == tb2.BlockID {
+		t.Errorf("expected unique block IDs, both are %q", tb1.BlockID)
+	}
+
+	// Verify content independence via JSON.
+	jsonStr := blockJSON(t, blocks)
+	for _, word := range []string{"A", "B", "X", "Y"} {
+		if !strings.Contains(jsonStr, word) {
+			t.Errorf("expected %q in output: %s", word, jsonStr)
+		}
+	}
+}
+
+// TestConvert_TableMixedWithBlocks verifies a table surrounded by other block types
+// produces the correct block sequence and that post-table inline formatting works.
+func TestConvert_TableMixedWithBlocks(t *testing.T) {
+	input := "## Title\n\nSome text.\n\n| H1 | H2 |\n|---|---|\n| a | b |\n\nAfter table **bold**."
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 4 {
+		t.Fatalf("expected 4 blocks (header, paragraph, table, paragraph), got %d: %s",
+			len(blocks), blockJSON(t, blocks))
+	}
+
+	// Block 0: header.
+	if _, ok := blocks[0].(*slack.HeaderBlock); !ok {
+		t.Errorf("block[0]: expected HeaderBlock, got %T", blocks[0])
+	}
+	// Block 1: rich text paragraph.
+	if _, ok := blocks[1].(*slack.RichTextBlock); !ok {
+		t.Errorf("block[1]: expected RichTextBlock, got %T", blocks[1])
+	}
+	// Block 2: table.
+	if _, ok := blocks[2].(*slack.TableBlock); !ok {
+		t.Errorf("block[2]: expected TableBlock, got %T", blocks[2])
+	}
+	// Block 3: rich text paragraph with bold.
+	rt, ok := blocks[3].(*slack.RichTextBlock)
+	if !ok {
+		t.Fatalf("block[3]: expected RichTextBlock, got %T", blocks[3])
+	}
+	sec, ok := rt.Elements[0].(*slack.RichTextSection)
+	if !ok {
+		t.Fatalf("block[3]: expected RichTextSection, got %T", rt.Elements[0])
+	}
+	foundBold := false
+	for _, elem := range sec.Elements {
+		if te, ok := elem.(*slack.RichTextSectionTextElement); ok {
+			if te.Style != nil && te.Style.Bold {
+				foundBold = true
+			}
+		}
+	}
+	if !foundBold {
+		t.Errorf("expected bold text in post-table paragraph, got: %s", blockJSON(t, blocks))
+	}
+}
+
+// TestConvert_TableCodeInCell verifies that inline code in a table cell
+// preserves the code style flag.
+func TestConvert_TableCodeInCell(t *testing.T) {
+	input := "| Header |\n|---|\n| `code` |"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+	}
+	tb, ok := blocks[0].(*slack.TableBlock)
+	if !ok {
+		t.Fatalf("expected TableBlock, got %T", blocks[0])
+	}
+
+	// Verify "code": true appears in the JSON output.
+	data, err := json.Marshal(tb)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	jsonStr := string(data)
+	if !strings.Contains(jsonStr, `"code":true`) {
+		t.Errorf("expected code style in table cell, got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, "code") {
+		t.Errorf("expected 'code' text in table cell, got: %s", jsonStr)
+	}
+}
+
 // FuzzConvert verifies that Convert never panics on arbitrary input.
 func FuzzConvert(f *testing.F) {
 	f.Add("")

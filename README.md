@@ -165,7 +165,7 @@ blocks, _ := md2slack.Convert("[Click here](https://example.com)")
 
 ### Message chunking
 
-Slack limits messages to 50 blocks. Use `ChunkBlocks` to split:
+Slack limits messages to 50 blocks. Use `ChunkBlocks` to split. It also enforces at most one `TableBlock` per chunk, since Slack rejects messages containing multiple tables.
 
 ```go
 blocks, _ := md2slack.Convert(longMarkdown)
@@ -183,7 +183,7 @@ Parses a Markdown string and returns Slack Block Kit blocks. Returns `nil, nil` 
 
 ### `ChunkBlocks(blocks []slack.Block, maxPerMessage int) [][]slack.Block`
 
-Splits a block slice into chunks of at most `maxPerMessage`. Defaults to 50 if `maxPerMessage <= 0`.
+Splits a block slice into chunks of at most `maxPerMessage`. Defaults to 50 if `maxPerMessage <= 0`. Each chunk contains at most one `TableBlock` — when a table is encountered, the current chunk is finalized and a new chunk begins after the table.
 
 ## CLI example
 

@@ -68,8 +68,10 @@ func (ctx *renderContext) handleTableCell(_ *east.TableCell, entering bool) {
 		return
 	}
 	if entering {
-		// Clear inline accumulator so cell content starts fresh.
+		// Clear inline accumulator and style stack so cell content starts fresh.
 		ctx.inlineElements = nil
+		ctx.styleStack = nil
+		ctx.currentStyle = nil
 	} else {
 		// Flush accumulated inline elements into a RichTextBlock cell.
 		var elements []slack.RichTextElement
