@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-md2slack is a Go library that converts standard Markdown into Slack Block Kit blocks using goldmark (GFM parser) and slack-go/slack (canonical Block Kit types). One public function: `Convert` returns `[]slack.Block`. A helper `ChunkBlocks` splits block slices for the 50-block-per-message limit. Requires Go 1.22+.
+md2slack is a Go library that converts standard Markdown into Slack Block Kit blocks using goldmark (GFM parser) and slack-go/slack (canonical Block Kit types). One public function: `Convert` returns `[]slack.Block`. A helper `ChunkBlocks` splits block slices for the 50-block-per-message limit. Requires Go 1.25+.
 
 ## Commands
 

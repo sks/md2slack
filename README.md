@@ -18,7 +18,7 @@
 go get github.com/navidemad/md2slack
 ```
 
-Requires **Go 1.22+**.
+Requires **Go 1.25+**.
 
 ## Quick start
 
@@ -72,7 +72,7 @@ Output blocks (as JSON):
 | `> quote` | `rich_text` (`rich_text_quote`) |
 | Fenced code blocks (`` ``` ``) | `rich_text` (`rich_text_preformatted`) |
 | `1. item` / `- item` | `rich_text` (`rich_text_list` with ordered/bullet style, nested indent) |
-| GFM tables | `section` (mrkdwn with code-fenced monospace, column-aligned) |
+| GFM tables | `table` (native TableBlock with rich text cells, per-column alignment and wrapping) |
 | Inline text with formatting | `rich_text` (`rich_text_section` with styled elements) |
 
 ### Inline formatting

@@ -647,6 +647,31 @@ func TestConvert_TableSingleColumn(t *testing.T) {
 	}
 }
 
+func TestConvert_TableEmptyCell(t *testing.T) {
+	input := "| A | B |\n|---|---|\n|  | data |"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	tb := blocks[0].(*slack.TableBlock)
+	// No cell should have nil Elements.
+	for i, row := range tb.Rows {
+		for j, cell := range row {
+			if cell.Elements == nil {
+				t.Errorf("row %d col %d: Elements should not be nil", i, j)
+			}
+		}
+	}
+	// Verify "data" is present in the non-empty cell.
+	jsonStr := blockJSON(t, blocks)
+	if !strings.Contains(jsonStr, "data") {
+		t.Errorf("expected 'data' in table JSON, got: %s", jsonStr)
+	}
+}
+
 func TestChunkBlocks(t *testing.T) {
 	tests := []struct {
 		name    string

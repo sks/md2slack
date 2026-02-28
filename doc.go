@@ -9,7 +9,7 @@
 //     payloads. Headings become HeaderBlocks, horizontal rules become
 //     DividerBlocks, images become ImageBlocks, fenced code becomes
 //     RichTextPreformatted, lists become RichTextList, blockquotes become
-//     RichTextQuote, tables become SectionBlocks with code-fenced monospace,
+//     RichTextQuote, tables become TableBlocks with rich text cells,
 //     and inline text with formatting becomes RichTextSection elements.
 //
 //   - [ChunkBlocks] splits a block slice into chunks of at most N blocks,

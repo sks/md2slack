@@ -77,6 +77,15 @@ func (ctx *renderContext) handleTableCell(_ *east.TableCell, entering bool) {
 		if sec != nil {
 			elements = append(elements, sec)
 		}
+		if len(elements) == 0 {
+			// Empty cell: provide a minimal RichTextSection so Slack API
+			// receives "elements": [...] rather than null.
+			elements = []slack.RichTextElement{
+				slack.NewRichTextSection(
+					slack.NewRichTextSectionTextElement("", nil),
+				),
+			}
+		}
 		cell := slack.NewRichTextBlock("", elements...)
 		ctx.tableState.currentRow = append(ctx.tableState.currentRow, cell)
 	}
