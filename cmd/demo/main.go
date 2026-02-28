@@ -11,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/navidemad/md2slack"
+	"github.com/presmihaylov/md2slack"
 	"github.com/slack-go/slack"
 )
 
