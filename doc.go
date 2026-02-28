@@ -30,7 +30,7 @@
 //   - Ordered lists (1. item) → RichTextList (ordered)
 //   - Unordered lists (- item) → RichTextList (bullet)
 //   - Nested lists → RichTextList with indent levels
-//   - GFM tables → SectionBlock with code-fenced monospace
+//   - GFM tables → TableBlock with rich text cells
 //   - Horizontal rules (---) → DividerBlock
 //   - Standalone links → ActionBlock with button
 //   - Task checkboxes (- [x] item) → checkbox emoji

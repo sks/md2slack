@@ -217,25 +217,18 @@ func TestConvert_Basic(t *testing.T) {
 			},
 		},
 		{
-			name:  "table becomes section with code fence",
+			name:  "table becomes TableBlock",
 			input: "| Name | Age |\n|------|-----|\n| Alice | 30 |",
 			check: func(t *testing.T, blocks []slack.Block) {
 				if len(blocks) != 1 {
 					t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
 				}
-				sec, ok := blocks[0].(*slack.SectionBlock)
+				tb, ok := blocks[0].(*slack.TableBlock)
 				if !ok {
-					t.Fatalf("expected SectionBlock, got %T", blocks[0])
+					t.Fatalf("expected TableBlock, got %T", blocks[0])
 				}
-				if sec.Text == nil {
-					t.Fatal("expected text, got nil")
-				}
-				if sec.Text.Type != slack.MarkdownType {
-					t.Errorf("expected mrkdwn, got %q", sec.Text.Type)
-				}
-				// Should contain code fence.
-				if !strings.Contains(sec.Text.Text, "```") {
-					t.Errorf("expected code fence in table text, got: %q", sec.Text.Text)
+				if len(tb.Rows) != 2 {
+					t.Errorf("expected 2 rows (header + 1 data), got %d", len(tb.Rows))
 				}
 			},
 		},
@@ -515,19 +508,37 @@ func TestConvert_Table(t *testing.T) {
 	if len(blocks) != 1 {
 		t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
 	}
-	sec, ok := blocks[0].(*slack.SectionBlock)
+	tb, ok := blocks[0].(*slack.TableBlock)
 	if !ok {
-		t.Fatalf("expected SectionBlock, got %T", blocks[0])
+		t.Fatalf("expected TableBlock, got %T", blocks[0])
 	}
-	text := sec.Text.Text
-	if !strings.Contains(text, "```") {
-		t.Errorf("expected code fence, got: %q", text)
+	// 2 rows: header + 1 data row.
+	if len(tb.Rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(tb.Rows))
 	}
-	if !strings.Contains(text, "Name") {
-		t.Errorf("expected 'Name' in table, got: %q", text)
+	// 2 columns.
+	if len(tb.Rows[0]) != 2 {
+		t.Fatalf("expected 2 columns, got %d", len(tb.Rows[0]))
 	}
-	if !strings.Contains(text, "Alice") {
-		t.Errorf("expected 'Alice' in table, got: %q", text)
+	// Verify content via JSON.
+	jsonStr := blockJSON(t, blocks)
+	if !strings.Contains(jsonStr, "Name") {
+		t.Errorf("expected 'Name' in table JSON, got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, "Alice") {
+		t.Errorf("expected 'Alice' in table JSON, got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, "Age") {
+		t.Errorf("expected 'Age' in table JSON, got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, "30") {
+		t.Errorf("expected '30' in table JSON, got: %s", jsonStr)
+	}
+	// All columns should be wrapped.
+	for i, cs := range tb.ColumnSettings {
+		if !cs.IsWrapped {
+			t.Errorf("column %d: expected IsWrapped=true", i)
+		}
 	}
 }
 
@@ -540,11 +551,99 @@ func TestConvert_TableAlignment(t *testing.T) {
 	if len(blocks) != 1 {
 		t.Fatalf("expected 1 block, got %d", len(blocks))
 	}
-	sec := blocks[0].(*slack.SectionBlock)
-	text := sec.Text.Text
-	// Right-aligned "100" should have leading spaces.
-	if !strings.Contains(text, "100") {
-		t.Errorf("expected '100' in table, got: %q", text)
+	tb := blocks[0].(*slack.TableBlock)
+	if len(tb.ColumnSettings) != 2 {
+		t.Fatalf("expected 2 column settings, got %d", len(tb.ColumnSettings))
+	}
+	// First column: left-aligned.
+	if tb.ColumnSettings[0].Align != slack.ColumnAlignmentLeft {
+		t.Errorf("column 0: expected left alignment, got %q", tb.ColumnSettings[0].Align)
+	}
+	// Second column: right-aligned.
+	if tb.ColumnSettings[1].Align != slack.ColumnAlignmentRight {
+		t.Errorf("column 1: expected right alignment, got %q", tb.ColumnSettings[1].Align)
+	}
+}
+
+func TestConvert_TableRichText(t *testing.T) {
+	// Bold and links in table cells should be preserved as rich text.
+	input := "| Feature | Link |\n|---------|------|\n| **bold** | [click](https://example.com) |"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d: %s", len(blocks), blockJSON(t, blocks))
+	}
+	tb, ok := blocks[0].(*slack.TableBlock)
+	if !ok {
+		t.Fatalf("expected TableBlock, got %T", blocks[0])
+	}
+	jsonStr := blockJSON(t, blocks)
+	// Bold style should be preserved in cells.
+	if !strings.Contains(jsonStr, `"bold": true`) {
+		t.Errorf("expected bold style preserved in table cell, got: %s", jsonStr)
+	}
+	// Link should be preserved in cells.
+	if !strings.Contains(jsonStr, "https://example.com") {
+		t.Errorf("expected link URL preserved in table cell, got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"type": "link"`) {
+		t.Errorf("expected link element in table cell, got: %s", jsonStr)
+	}
+	// Verify we have 2 rows (header + 1 data).
+	if len(tb.Rows) != 2 {
+		t.Errorf("expected 2 rows, got %d", len(tb.Rows))
+	}
+}
+
+func TestConvert_TableCenterAlignment(t *testing.T) {
+	input := "| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	tb := blocks[0].(*slack.TableBlock)
+	if len(tb.ColumnSettings) != 3 {
+		t.Fatalf("expected 3 column settings, got %d", len(tb.ColumnSettings))
+	}
+	if tb.ColumnSettings[0].Align != slack.ColumnAlignmentLeft {
+		t.Errorf("column 0: expected left, got %q", tb.ColumnSettings[0].Align)
+	}
+	if tb.ColumnSettings[1].Align != slack.ColumnAlignmentCenter {
+		t.Errorf("column 1: expected center, got %q", tb.ColumnSettings[1].Align)
+	}
+	if tb.ColumnSettings[2].Align != slack.ColumnAlignmentRight {
+		t.Errorf("column 2: expected right, got %q", tb.ColumnSettings[2].Align)
+	}
+	// All columns should have wrapping enabled.
+	for i, cs := range tb.ColumnSettings {
+		if !cs.IsWrapped {
+			t.Errorf("column %d: expected IsWrapped=true", i)
+		}
+	}
+}
+
+func TestConvert_TableSingleColumn(t *testing.T) {
+	input := "| Item |\n|------|\n| one |\n| two |"
+	blocks, err := Convert(input)
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	tb := blocks[0].(*slack.TableBlock)
+	// 3 rows: header + 2 data.
+	if len(tb.Rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(tb.Rows))
+	}
+	// 1 column.
+	if len(tb.ColumnSettings) != 1 {
+		t.Fatalf("expected 1 column setting, got %d", len(tb.ColumnSettings))
 	}
 }
 

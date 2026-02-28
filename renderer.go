@@ -45,7 +45,7 @@ func getParser() goldmark.Markdown {
 //   - Ordered lists (1. item) → RichTextBlock with RichTextList (ordered)
 //   - Unordered lists (- item) → RichTextBlock with RichTextList (bullet)
 //   - Nested lists → RichTextList with indent levels
-//   - Tables (GFM) → SectionBlock with code-fenced monospace
+//   - Tables (GFM) → TableBlock with rich text cells
 //   - Horizontal rules (---) → DividerBlock
 //   - Standalone links ([text](url) alone) → ActionBlock with button
 //   - Task checkboxes (- [x] item) → checkbox emoji text
