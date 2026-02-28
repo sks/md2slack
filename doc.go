@@ -13,7 +13,9 @@
 //     and inline text with formatting becomes RichTextSection elements.
 //
 //   - [ChunkBlocks] splits a block slice into chunks of at most N blocks,
-//     useful for respecting Slack's 50-block-per-message limit.
+//     useful for respecting Slack's 50-block-per-message limit. It also
+//     ensures each chunk contains at most one TableBlock, since Slack
+//     rejects messages with multiple tables.
 //
 // # Supported Markdown features
 //

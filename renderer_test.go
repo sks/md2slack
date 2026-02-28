@@ -701,6 +701,88 @@ func TestChunkBlocks(t *testing.T) {
 	}
 }
 
+func TestChunkBlocks_TableSplit(t *testing.T) {
+	blocks := []slack.Block{
+		slack.NewDividerBlock(),
+		&slack.TableBlock{},
+		slack.NewDividerBlock(),
+		&slack.TableBlock{},
+		slack.NewDividerBlock(),
+	}
+	chunks := ChunkBlocks(blocks, 50)
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(chunks))
+	}
+	// First chunk: divider, table, divider
+	if len(chunks[0]) != 3 {
+		t.Errorf("chunk 0: expected 3 blocks, got %d", len(chunks[0]))
+	}
+	// Second chunk: table, divider
+	if len(chunks[1]) != 2 {
+		t.Errorf("chunk 1: expected 2 blocks, got %d", len(chunks[1]))
+	}
+}
+
+func TestChunkBlocks_SingleTable(t *testing.T) {
+	blocks := []slack.Block{
+		slack.NewDividerBlock(),
+		&slack.TableBlock{},
+		slack.NewDividerBlock(),
+	}
+	chunks := ChunkBlocks(blocks, 50)
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	if len(chunks[0]) != 3 {
+		t.Errorf("expected 3 blocks, got %d", len(chunks[0]))
+	}
+}
+
+func TestChunkBlocks_ThreeTables(t *testing.T) {
+	blocks := []slack.Block{
+		&slack.TableBlock{},
+		slack.NewDividerBlock(),
+		&slack.TableBlock{},
+		&slack.TableBlock{},
+	}
+	chunks := ChunkBlocks(blocks, 50)
+	if len(chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	}
+	if len(chunks[0]) != 2 {
+		t.Errorf("chunk 0: expected 2 blocks, got %d", len(chunks[0]))
+	}
+	if len(chunks[1]) != 1 {
+		t.Errorf("chunk 1: expected 1 block, got %d", len(chunks[1]))
+	}
+	if len(chunks[2]) != 1 {
+		t.Errorf("chunk 2: expected 1 block, got %d", len(chunks[2]))
+	}
+}
+
+func TestChunkBlocks_TableAtMaxBoundary(t *testing.T) {
+	// 3 blocks then a table at position 4, with max=4.
+	// The first 4 blocks fit in one chunk (including the table).
+	// The 5th block (second table) forces a new chunk.
+	blocks := []slack.Block{
+		slack.NewDividerBlock(),
+		slack.NewDividerBlock(),
+		slack.NewDividerBlock(),
+		&slack.TableBlock{},
+		&slack.TableBlock{},
+	}
+	chunks := ChunkBlocks(blocks, 4)
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(chunks))
+	}
+	if len(chunks[0]) != 4 {
+		t.Errorf("chunk 0: expected 4 blocks, got %d", len(chunks[0]))
+	}
+	if len(chunks[1]) != 1 {
+		t.Errorf("chunk 1: expected 1 block, got %d", len(chunks[1]))
+	}
+}
+
 func TestConvert_JSONRoundTrip(t *testing.T) {
 	input := "## Hello\n\n**bold** and *italic*\n\n- item 1\n- item 2"
 	blocks, err := Convert(input)
