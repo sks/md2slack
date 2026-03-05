@@ -1668,6 +1668,165 @@ func TestConvert_EmojiShortcodes(t *testing.T) {
 	}
 }
 
+// TestConvert_TableRowLimit verifies that a table with more than 100 rows
+// (including header) is split into multiple TableBlocks.
+func TestConvert_TableRowLimit(t *testing.T) {
+	// Build a markdown table with 1 header + 150 data rows.
+	var sb strings.Builder
+	sb.WriteString("| ID | Value |\n|---|---|\n")
+	for i := 0; i < 150; i++ {
+		sb.WriteString("| ")
+		sb.WriteString(strings.Repeat("x", 3))
+		sb.WriteString(" | ")
+		sb.WriteString(strings.Repeat("y", 3))
+		sb.WriteString(" |\n")
+	}
+
+	blocks, err := Convert(sb.String())
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+
+	// With 1 header + 150 data rows, we need 2 tables:
+	//   table 1: header + 99 data rows = 100 rows
+	//   table 2: header + 51 data rows = 52 rows
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 TableBlocks, got %d: %s", len(blocks), blockJSON(t, blocks))
+	}
+
+	tb1, ok := blocks[0].(*slack.TableBlock)
+	if !ok {
+		t.Fatalf("block[0]: expected TableBlock, got %T", blocks[0])
+	}
+	tb2, ok := blocks[1].(*slack.TableBlock)
+	if !ok {
+		t.Fatalf("block[1]: expected TableBlock, got %T", blocks[1])
+	}
+
+	// First table: header + 99 data rows = 100 rows.
+	if len(tb1.Rows) != 100 {
+		t.Errorf("table 1: expected 100 rows, got %d", len(tb1.Rows))
+	}
+	// Second table: header + 51 data rows = 52 rows.
+	if len(tb2.Rows) != 52 {
+		t.Errorf("table 2: expected 52 rows, got %d", len(tb2.Rows))
+	}
+
+	// Both should have unique block IDs.
+	if tb1.BlockID == tb2.BlockID {
+		t.Errorf("expected unique block IDs, both are %q", tb1.BlockID)
+	}
+}
+
+// TestConvert_TableExactlyAtLimit verifies that a table with exactly 100 rows
+// (header + 99 data) produces a single TableBlock.
+func TestConvert_TableExactlyAtLimit(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("| Col |\n|---|\n")
+	for i := 0; i < 99; i++ {
+		sb.WriteString("| val |\n")
+	}
+
+	blocks, err := Convert(sb.String())
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	tb := blocks[0].(*slack.TableBlock)
+	if len(tb.Rows) != 100 {
+		t.Errorf("expected 100 rows, got %d", len(tb.Rows))
+	}
+}
+
+// TestConvert_TableColumnLimit verifies that tables with more than 20 columns
+// are truncated to 20.
+func TestConvert_TableColumnLimit(t *testing.T) {
+	// Build a 25-column table.
+	var sb strings.Builder
+	for i := 0; i < 25; i++ {
+		if i > 0 {
+			sb.WriteString(" | ")
+		}
+		sb.WriteString("H")
+	}
+	sb.WriteString("\n")
+	for i := 0; i < 25; i++ {
+		if i > 0 {
+			sb.WriteString(" | ")
+		}
+		sb.WriteString("---")
+	}
+	sb.WriteString("\n")
+	for i := 0; i < 25; i++ {
+		if i > 0 {
+			sb.WriteString(" | ")
+		}
+		sb.WriteString("D")
+	}
+	sb.WriteString("\n")
+
+	blocks, err := Convert(sb.String())
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	tb := blocks[0].(*slack.TableBlock)
+
+	// All rows should have at most 20 columns.
+	for i, row := range tb.Rows {
+		if len(row) > 20 {
+			t.Errorf("row %d: expected at most 20 columns, got %d", i, len(row))
+		}
+	}
+	// Column settings should be at most 20.
+	if len(tb.ColumnSettings) > 20 {
+		t.Errorf("expected at most 20 column settings, got %d", len(tb.ColumnSettings))
+	}
+}
+
+// TestConvert_TableNoHeader verifies that a table without a header row
+// (header-only tables produce an empty data set) uses the full 100-row limit
+// for data rows.
+func TestConvert_TableNoHeaderSplit(t *testing.T) {
+	// Build a table with header + 200 data rows to verify splitting.
+	var sb strings.Builder
+	sb.WriteString("| A |\n|---|\n")
+	for i := 0; i < 200; i++ {
+		sb.WriteString("| x |\n")
+	}
+
+	blocks, err := Convert(sb.String())
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+
+	// 200 data rows + header → ceil(200/99) = 3 tables.
+	// Table 1: header + 99 = 100 rows
+	// Table 2: header + 99 = 100 rows
+	// Table 3: header + 2 = 3 rows
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d", len(blocks))
+	}
+
+	tb1 := blocks[0].(*slack.TableBlock)
+	tb2 := blocks[1].(*slack.TableBlock)
+	tb3 := blocks[2].(*slack.TableBlock)
+
+	if len(tb1.Rows) != 100 {
+		t.Errorf("table 1: expected 100 rows, got %d", len(tb1.Rows))
+	}
+	if len(tb2.Rows) != 100 {
+		t.Errorf("table 2: expected 100 rows, got %d", len(tb2.Rows))
+	}
+	if len(tb3.Rows) != 3 {
+		t.Errorf("table 3: expected 3 rows, got %d", len(tb3.Rows))
+	}
+}
+
 // FuzzConvert verifies that Convert never panics on arbitrary input.
 func FuzzConvert(f *testing.F) {
 	f.Add("")
