@@ -9,7 +9,20 @@ import (
 
 // emojiShortcodeRe matches Slack emoji shortcodes like :bar_chart:, :+1:, :wave:.
 // Slack emoji names contain lowercase letters, digits, underscores, hyphens, and plus signs.
+// The name must contain at least one letter to avoid matching clock-like patterns
+// (e.g. ":49:" in "19:49:41") which Slack rejects as invalid emoji.
 var emojiShortcodeRe = regexp.MustCompile(`:([a-z0-9+][a-z0-9_+\-]*):`)
+
+// isValidEmojiName returns true if the name contains at least one letter.
+// Pure-digit names like "49" from time strings (19:49:41) are not valid emojis.
+func isValidEmojiName(name string) bool {
+	for _, c := range name {
+		if (c >= 'a' && c <= 'z') || c == '+' {
+			return true
+		}
+	}
+	return false
+}
 
 
 // renderContext tracks all state during the AST walk.
@@ -201,10 +214,15 @@ func resolveEmojis(elements []slack.RichTextSectionElement) []slack.RichTextSect
 
 		cursor := 0
 		for _, loc := range matches {
+			name := te.Text[loc[0]+1 : loc[1]-1]
+			if !isValidEmojiName(name) {
+				// Not a valid emoji (e.g. pure digits from time strings like 19:49:41).
+				// Leave the text as-is and skip this match.
+				continue
+			}
 			if loc[0] > cursor {
 				result = append(result, slack.NewRichTextSectionTextElement(te.Text[cursor:loc[0]], te.Style))
 			}
-			name := te.Text[loc[0]+1 : loc[1]-1]
 			result = append(result, slack.NewRichTextSectionEmojiElement(name, 0, te.Style))
 			cursor = loc[1]
 		}

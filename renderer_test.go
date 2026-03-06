@@ -1655,6 +1655,34 @@ func TestConvert_EmojiShortcodes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:  "numeric-only colons in inline code not treated as emoji",
+			input: "- `19:49:41 UTC` \u2014 Job created",
+			check: func(t *testing.T, blocks []slack.Block) {
+				jsonStr := blockJSON(t, blocks)
+				// ":49:" should NOT become an emoji element.
+				if strings.Contains(jsonStr, `"name": "49"`) {
+					t.Errorf("pure-digit :49: should not be treated as emoji: %s", jsonStr)
+				}
+				// The full timestamp should be preserved as a single text element.
+				if !strings.Contains(jsonStr, `19:49:41 UTC`) {
+					t.Errorf("expected timestamp to be preserved as text: %s", jsonStr)
+				}
+			},
+		},
+		{
+			name:  "time-like patterns not treated as emoji",
+			input: "At `10:30:00` and `23:59:59` the server restarted",
+			check: func(t *testing.T, blocks []slack.Block) {
+				jsonStr := blockJSON(t, blocks)
+				// None of the numeric segments should become emojis.
+				for _, elem := range []string{`"name": "30"`, `"name": "59"`} {
+					if strings.Contains(jsonStr, elem) {
+						t.Errorf("pure-digit colon pattern should not be emoji: %s", jsonStr)
+					}
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
