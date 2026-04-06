@@ -152,7 +152,7 @@ func (ctx *renderContext) handleParagraph(n *ast.Paragraph, entering bool) {
 				frame.elements = append(frame.elements,
 					slack.NewRichTextSectionTextElement("\n", nil))
 			}
-			resolved := resolveEmojis(ctx.inlineElements)
+			resolved := resolveInlines(ctx.inlineElements)
 			frame.elements = append(frame.elements, resolved...)
 			ctx.inlineElements = nil
 			return
@@ -160,7 +160,7 @@ func (ctx *renderContext) handleParagraph(n *ast.Paragraph, entering bool) {
 
 		// Normal paragraph → section block with mrkdwn.
 		if len(ctx.inlineElements) > 0 {
-			resolved := resolveEmojis(ctx.inlineElements)
+			resolved := resolveInlines(ctx.inlineElements)
 			sec := slack.NewRichTextSection(resolved...)
 			ctx.emitBlock(slack.NewRichTextBlock("", sec))
 			ctx.inlineElements = nil
