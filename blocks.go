@@ -222,11 +222,9 @@ func (ctx *renderContext) handleFencedCodeBlock(n *ast.FencedCodeBlock, entering
 	text = strings.TrimRight(text, "\n")
 
 	pre := &slack.RichTextPreformatted{
-		RichTextSection: slack.RichTextSection{
-			Type: slack.RTEPreformatted,
-			Elements: []slack.RichTextSectionElement{
-				slack.NewRichTextSectionTextElement(text, nil),
-			},
+		Type: slack.RTEPreformatted,
+		Elements: []slack.RichTextSectionElement{
+			slack.NewRichTextSectionTextElement(text, nil),
 		},
 	}
 	ctx.emitBlock(slack.NewRichTextBlock("", pre))
@@ -248,11 +246,9 @@ func (ctx *renderContext) handleCodeBlock(n *ast.CodeBlock, entering bool) {
 	text := strings.TrimRight(buf.String(), "\n")
 
 	pre := &slack.RichTextPreformatted{
-		RichTextSection: slack.RichTextSection{
-			Type: slack.RTEPreformatted,
-			Elements: []slack.RichTextSectionElement{
-				slack.NewRichTextSectionTextElement(text, nil),
-			},
+		Type: slack.RTEPreformatted,
+		Elements: []slack.RichTextSectionElement{
+			slack.NewRichTextSectionTextElement(text, nil),
 		},
 	}
 	ctx.emitBlock(slack.NewRichTextBlock("", pre))
