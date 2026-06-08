@@ -657,10 +657,14 @@ func TestConvert_TableEmptyCell(t *testing.T) {
 		t.Fatalf("expected 1 block, got %d", len(blocks))
 	}
 	tb := blocks[0].(*slack.TableBlock)
-	// No cell should have nil Elements.
+	// No rich_text cell should have nil Elements.
 	for i, row := range tb.Rows {
 		for j, cell := range row {
-			if cell.Elements == nil {
+			rtCell, ok := cell.(*slack.TableRichTextCell)
+			if !ok {
+				continue
+			}
+			if rtCell.Elements == nil {
 				t.Errorf("row %d col %d: Elements should not be nil", i, j)
 			}
 		}

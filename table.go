@@ -17,9 +17,9 @@ const (
 // tableState accumulates table data during AST walking.
 type tableState struct {
 	alignments []east.Alignment
-	headerRow  []*slack.RichTextBlock
-	dataRows   [][]*slack.RichTextBlock
-	currentRow []*slack.RichTextBlock
+	headerRow  []slack.TableCell
+	dataRows   [][]slack.TableCell
+	currentRow []slack.TableCell
 	inHeader   bool
 }
 
@@ -82,7 +82,7 @@ func (ctx *renderContext) handleTableCell(_ *east.TableCell, entering bool) {
 		ctx.styleStack = nil
 		ctx.currentStyle = nil
 	} else {
-		// Flush accumulated inline elements into a RichTextBlock cell.
+		// Flush accumulated inline elements into a TableRichTextCell.
 		var elements []slack.RichTextElement
 		sec := ctx.flushInlineToSection()
 		if sec != nil {
@@ -98,7 +98,7 @@ func (ctx *renderContext) handleTableCell(_ *east.TableCell, entering bool) {
 				),
 			}
 		}
-		cell := slack.NewRichTextBlock("", elements...)
+		cell := slack.NewTableRichTextCell(elements...)
 		ctx.tableState.currentRow = append(ctx.tableState.currentRow, cell)
 	}
 }
@@ -149,7 +149,7 @@ func (ts *tableState) renderTableBlocks(ctx *renderContext) []*slack.TableBlock 
 }
 
 // truncateRow returns the row trimmed to at most maxCols cells.
-func truncateRow(row []*slack.RichTextBlock, maxCols int) []*slack.RichTextBlock {
+func truncateRow(row []slack.TableCell, maxCols int) []slack.TableCell {
 	if len(row) <= maxCols {
 		return row
 	}
@@ -158,7 +158,7 @@ func truncateRow(row []*slack.RichTextBlock, maxCols int) []*slack.RichTextBlock
 
 // buildColumnSettings creates column settings based on the actual column count
 // (capped at maxTableColumns) from the header and data rows.
-func buildColumnSettings(header []*slack.RichTextBlock, dataRows [][]*slack.RichTextBlock, alignments []east.Alignment) []slack.ColumnSetting {
+func buildColumnSettings(header []slack.TableCell, dataRows [][]slack.TableCell, alignments []east.Alignment) []slack.ColumnSetting {
 	numCols := len(header)
 	for _, row := range dataRows {
 		n := len(row)

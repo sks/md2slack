@@ -3,7 +3,7 @@ module github.com/presmihaylov/md2slack
 go 1.25
 
 require (
-	github.com/slack-go/slack v0.21.0
+	github.com/slack-go/slack v0.25.0
 	github.com/yuin/goldmark v1.7.16
 )
 
